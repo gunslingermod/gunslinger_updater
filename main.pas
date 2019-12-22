@@ -565,9 +565,11 @@ begin
         update_progress.Max:=1;
         update_progress.Position:=1;
       end else begin
-        update_progress.Min:=0;
-        update_progress.Max:=progress.estimated_dl_size;
-        update_progress.Position:=progress.total_downloaded;
+        if (progress.estimated_dl_size > 0) and (progress.total_downloaded <= progress.estimated_dl_size) then begin
+          update_progress.Min:=0;
+          update_progress.Max:=progress.estimated_dl_size;
+          update_progress.Position:=progress.total_downloaded;
+        end;
       end;
     end;
 
@@ -700,8 +702,15 @@ begin
     path:=path+'\';
   end;
   path:=path+'files.list';
-  // TODO: Randomize array
-  PushToArray(_master_links, 'http://192.168.1.2/guns_test_update.txt');
+
+  if ParamCount = 0 then begin
+    // TODO: Randomize array
+    PushToArray(_master_links, 'https://raw.githubusercontent.com/gunslingermod/updater_links/master/guns.list');
+  end else if paramcount >= 1  then begin
+    FZLogMgr.Get.Write('Set master link to "'+ParamStr(0)+'"', FZ_LOG_INFO);
+    PushToArray(_master_links, ParamStr(1));
+  end;
+
   _master_url_index:=0;
   _master_list_path:=path;
   ChangeState(DL_STATE_INIT);
