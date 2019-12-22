@@ -205,12 +205,12 @@ var
   xrCore:uintptr;
 begin
   result:=false;
-  xrCore:=GetModuleHandle('xrCore');
-  if xrCore = 0 then exit;
 
   _logfun:=logfun;
-
   InitializeCriticalSection(_cs);
+
+  xrCore:=GetModuleHandle('xrCore');
+  if xrCore = 0 then exit;
 
   rtc_lzo_decompressor:=GetProcAddress(xrCore, '?rtc9_decompress@@YAIPAXIPBXI@Z');
   result:=(@rtc_lzo_decompressor<>nil);
