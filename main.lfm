@@ -1,0 +1,39 @@
+object Form1: TForm1
+  Left = 845
+  Height = 96
+  Top = 458
+  Width = 338
+  BorderIcons = [biMinimize]
+  BorderStyle = bsToolWindow
+  Caption = 'Gunslinger Mod Updater'
+  ClientHeight = 96
+  ClientWidth = 338
+  OnCreate = FormCreate
+  Position = poScreenCenter
+  LCLVersion = '1.8.2.0'
+  object update_progress: TProgressBar
+    Left = 8
+    Height = 20
+    Top = 64
+    Width = 320
+    TabOrder = 0
+  end
+  object update_status: TLabel
+    Left = 8
+    Height = 1
+    Top = 24
+    Width = 1
+    ParentColor = False
+  end
+  object Timer1: TTimer
+    Interval = 200
+    OnTimer = Timer1Timer
+    left = 288
+    top = 8
+  end
+  object SelectDirectoryDialog1: TSelectDirectoryDialog
+    Title = 'Please select the directory where the original game is installed'
+    left = 256
+    top = 8
+  end
+end
