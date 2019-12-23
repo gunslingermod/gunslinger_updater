@@ -8,7 +8,7 @@ uses
   Classes, SysUtils, FileUtil, Forms, Controls, Graphics, Dialogs, ComCtrls,
   StdCtrls, ExtCtrls,
 
-  HttpDownloader, FileManager, Windows;
+  HttpDownloader, FileManager, Windows, LazUTF8;
 
 type
 
@@ -82,7 +82,7 @@ var
   hfile, hmap:handle;
   data:pointer;
 begin
-  hfile:=CreateFile(PAnsiChar(filename), GENERIC_READ, FILE_SHARE_READ, nil, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+  hfile:=CreateFile(PAnsiChar(UTF8ToWinCP(filename)), GENERIC_READ, FILE_SHARE_READ, nil, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
   if hfile = INVALID_HANDLE_VALUE then begin
     exit;
   end;
@@ -121,7 +121,7 @@ begin
   if not GetFileMD5(Application.ExeName, cur_md5) then exit;
   cur_md5:=LowerCase(cur_md5);
 
-  ini:=FZIniFile.Create(list_name);
+  ini:=FZIniFile.Create(UTF8ToWinCP(list_name));
   target_md5:=LowerCase(ini.GetStringDef(UPDATER_SECTION, 'md5', cur_md5));
   target_url:=ini.GetStringDef(UPDATER_SECTION, 'url', '');
   target_size:=ini.GetIntDef(UPDATER_SECTION, 'size', 0);
@@ -146,7 +146,7 @@ var
 begin
   result:=MASTERLIST_PARSE_ERROR;
 
-  cfg:=FZIniFile.Create(list_name);
+  cfg:=FZIniFile.Create(UTF8ToWinCP(list_name));
   try
     if cfg.GetBoolDef('main', 'maintenance', false) then begin
       result:=MASTERLIST_MAINTENANCE;
@@ -273,6 +273,7 @@ var
   files:FZMasterLinkListAddr; //I'm too lazy to rename the type
   i:integer;
   md5:string;
+  filename:string;
 const
   CONFIGS_MD5 = 'F2D38A8D462E459044CC7C296FD0A168';
 begin
@@ -292,7 +293,8 @@ begin
   end;
 
   for i:=0 to length(files)-1 do begin
-    if not FileExists(dir+files[i]) then begin
+    filename:=dir+files[i];
+    if not FileExists(filename) then begin
       exit;
     end;
   end;
@@ -378,7 +380,7 @@ begin
   end;
 
   _dlThread:=FZCurlDownloaderThread.Create();
-  _dl:=_dlThread.CreateDownloader(link, filename, 0);
+  _dl:=_dlThread.CreateDownloader(link, UTF8ToWinCP(filename), 0);
   result:=_dl.StartAsyncDownload();
 end;
 
@@ -398,7 +400,6 @@ var
   master_parse_res:MasterListParseResult;
   hfile:handle;
   tid:cardinal;
-  curdir:string;
   i:integer;
   itm_data:FZFileItemData;
   progress:FZFileActualizingProgressInfo;
@@ -451,20 +452,16 @@ begin
         end;
       end else begin
         master_parse_res := MASTERLIST_PARSE_ERROR;
-        curdir:=GetCurrentDir();
-        if (length(curdir)>0) and (curdir[length(curdir)]<>'\') and (curdir[length(curdir)]<>'/') then begin
-          curdir:=curdir+'\';
-        end;
 
         _filelist:=FZFiles.Create();
         _filelist.SetDlMode(FZ_DL_MODE_CURL);
         InitializeCriticalSection(_dl_info.lock);
         _filelist.SetCallback(@DownloadCallback, @_dl_info);
 
-        if _filelist.ScanPath(GetCurrentDir()) then begin
+        if _filelist.ScanPath(UTF8ToWinCP(GetCurrentDir())) then begin
           master_parse_res:=ParseFileList(_master_list_path, _filelist);
         end;
-        DeleteFile(PAnsiChar(_master_list_path));
+        DeleteFile(PAnsiChar(UTF8ToWinCP(_master_list_path)));
 
         //iterate over all records and delete the ones which shouldn't be deleted
         if master_parse_res = MASTERLIST_PARSE_OK then begin
@@ -514,13 +511,13 @@ begin
           SetStatus('Running update...');
 
           //hack - helps to avoid mis-restarting
-          hfile:=CreateFile(PAnsiChar(_downloader_update_params.filename), GENERIC_READ, FILE_SHARE_READ, nil, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+          hfile:=CreateFile(PAnsiChar(UTF8ToWinCP(_downloader_update_params.filename)), GENERIC_READ, FILE_SHARE_READ, nil, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
           CloseHandle(hfile);
 
           FillMemory(@si, sizeof(si),0);
           FillMemory(@pi, sizeof(pi),0);
           si.cb:=sizeof(si);
-          if not CreateProcess(PAnsiChar(_downloader_update_params.filename), '', nil, nil, false, 0, nil, nil, si, pi) then begin
+          if not CreateProcess(PAnsiChar(UTF8ToWinCP(_downloader_update_params.filename)), '', nil, nil, false, 0, nil, nil, si, pi) then begin
             error_msg := 'Can''t run update, please try again';
           end;
         end;
@@ -582,10 +579,10 @@ begin
         if SelectDirectoryDialog1.Execute() then begin
           i := IDYES;
           if not IsGameInstalledInDir(SelectDirectoryDialog1.FileName) then begin
-            i:=MessageBox(self.Handle, PAnsiChar('Looks like the game is NOT installed in the selected directory "'+SelectDirectoryDialog1.FileName+'".'+chr($0d)+chr($0a)+'Continue anyway?'), 'Please confirm', MB_YESNO or MB_ICONQUESTION);
+            i:=MessageBox(self.Handle, PAnsiChar('Looks like the game is NOT installed in the selected directory "'+UTF8ToWinCP(SelectDirectoryDialog1.FileName)+'".'+chr($0d)+chr($0a)+'Continue anyway?'), 'Please confirm', MB_YESNO or MB_ICONQUESTION);
           end;
           if i = IDYES then begin
-            parent_root:=SelectDirectoryDialog1.FileName;
+            parent_root:=UTF8ToWinCP(SelectDirectoryDialog1.FileName);
             if (length(parent_root)>0) and (parent_root[length(parent_root)]<>'\') and (parent_root[length(parent_root)]<>'/') then begin
               parent_root:=parent_root+'\';
             end;
@@ -664,8 +661,8 @@ begin
 
     status:=false;
     for cnt:=0 to 10 do begin
-      DeleteFile(PAnsiChar(path));
-      status:=CopyFile(PAnsiChar(Application.ExeName), PAnsiChar(path), false);
+      DeleteFile(PAnsiChar(UTF8ToWinCP(path)));
+      status:=CopyFile(PAnsiChar(UTF8ToWinCP(Application.ExeName)), PAnsiChar(UTF8ToWinCP(path)), false);
       if status then break;
       // Wait while updater terminates
       Sleep(1000);
@@ -673,13 +670,13 @@ begin
 
     if status then begin
       //hack - helps to avoid mis-restarting
-      hfile:=CreateFile(PAnsiChar(path), GENERIC_READ, FILE_SHARE_READ, nil, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+      hfile:=CreateFile(PAnsiChar(UTF8ToWinCP(path)), GENERIC_READ, FILE_SHARE_READ, nil, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
       CloseHandle(hfile);
 
       FillMemory(@si, sizeof(si),0);
       FillMemory(@pi, sizeof(pi),0);
       si.cb:=sizeof(si);
-      if not CreateProcess(PAnsiChar(path), '', nil, nil, false, 0, nil, nil, si, pi) then begin
+      if not CreateProcess(PAnsiChar(UTF8ToWinCP(path)), '', nil, nil, false, 0, nil, nil, si, pi) then begin
         MessageBox(self.Handle, 'Can''t restart updater executable module. Please do it manually', 'Error!', MB_ICONERROR or MB_OK);
       end;
     end else begin
@@ -691,7 +688,7 @@ begin
   if FileExists(_downloader_update_params.filename) then begin
     status:=false;
     for cnt:=0 to 10 do begin
-      status:=DeleteFile(PAnsiChar(_downloader_update_params.filename));
+      status:=DeleteFile(PAnsiChar(UTF8ToWinCP(_downloader_update_params.filename)));
       if status then break;
       Sleep(1000);
     end;
@@ -707,7 +704,7 @@ begin
     // TODO: Randomize array
     PushToArray(_master_links, 'https://raw.githubusercontent.com/gunslingermod/updater_links/master/guns.list');
   end else if paramcount >= 1  then begin
-    FZLogMgr.Get.Write('Set master link to "'+ParamStr(0)+'"', FZ_LOG_INFO);
+    FZLogMgr.Get.Write('Set master link to "'+ParamStr(1)+'"', FZ_LOG_INFO);
     PushToArray(_master_links, ParamStr(1));
   end;
 
