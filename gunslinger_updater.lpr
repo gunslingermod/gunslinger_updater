@@ -18,7 +18,7 @@ begin
 end;
 
 begin
-  Application.Title:='Gunslinger Mod Updater';
+  Application.Title:='GUNSLINGER MOD Updater';
   abstractions.Init();
   LogMgr.Init();
   Decompressor.Init(@DecompressLogger);

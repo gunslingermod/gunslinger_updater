@@ -32,6 +32,7 @@ type
   { TForm1 }
 
   TForm1 = class(TForm)
+    Image1: TImage;
     SelectDirectoryDialog1: TSelectDirectoryDialog;
     Timer1: TTimer;
     update_status: TLabel;
@@ -741,9 +742,30 @@ var
   path:string;
 const
   update_suffix:string = '.upd.exe';
+  border_size:integer = 10;
+  between_label_and_progress:integer=2;
 begin
   self.Caption:=self.Caption+' (Build ' + {$INCLUDE %DATE} + ')';
   FZLogMgr.Get.Write(self.Caption, FZ_LOG_IMPORTANT_INFO);
+
+  self.Image1.Top:=0;
+  self.Image1.Left:=0;
+  self.Image1.Width:=self.Image1.Picture.Width;
+  self.Image1.Height:=self.Image1.Picture.Height;
+  self.Width:=self.Image1.Width;
+  self.Height:=self.Image1.Height;
+
+  self.update_progress.Left:=border_size;
+  self.update_progress.Width:=self.Width-2*border_size;
+  self.update_progress.Top:=self.Height-self.update_progress.Height-border_size;
+  self.update_progress.Position:=0;
+
+  self.update_status.Left:=border_size;
+  self.update_status.Width:=self.Width-2*border_size;
+  self.update_status.Top:=self.Height-self.update_progress.Height-border_size-self.update_status.Height-between_label_and_progress;
+  self.update_status.Caption:='';
+
+
 
   _downloader_update_params.filename:=Application.ExeName+update_suffix;
 
