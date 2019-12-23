@@ -653,6 +653,9 @@ var
 const
   update_suffix:string = '.update.exe';
 begin
+  self.Caption:=self.Caption+' (Build ' + {$INCLUDE %DATE} + ')';
+  FZLogMgr.Get.Write(self.Caption, FZ_LOG_IMPORTANT_INFO);
+
   _downloader_update_params.filename:=Application.ExeName+update_suffix;
 
   if rightstr(Application.ExeName, length(update_suffix)) = update_suffix then begin
@@ -711,6 +714,7 @@ begin
   _master_url_index:=0;
   _master_list_path:=path;
   ChangeState(DL_STATE_INIT);
+  Timer1.Enabled:=true;
 end;
 
 end.
