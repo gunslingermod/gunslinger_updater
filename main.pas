@@ -221,9 +221,13 @@ begin
   result:=true;
 end;
 
-procedure StartActualization(filelist:FZFiles); stdcall;
+procedure StartActualization(frm:TForm1); stdcall;
 begin
-  filelist.ActualizeFiles();
+  if not frm._filelist.ActualizeFiles() then begin
+    EnterCriticalSection(frm._dl_info.lock);
+    frm._dl_info.info.status:=FZ_ACTUALIZING_FAILED;
+    LeaveCriticalSection(frm._dl_info.lock);
+  end;
 end;
 
 function ExtractParentFromFsGame():string;
@@ -487,7 +491,7 @@ begin
           _filelist.SortBySize();
           _filelist.Dump(FZ_LOG_INFO);
           progress.status:=FZ_ACTUALIZING_BEGIN;
-          _th_handle:=CreateThread(nil, 0, @StartActualization, _filelist, 0, tid);
+          _th_handle:=CreateThread(nil, 0, @StartActualization, self, 0, tid);
           if _th_handle <> 0 then begin
             SetStatus('Downloading content...');
             ChangeState(DL_STATE_DATA_LOADING);
