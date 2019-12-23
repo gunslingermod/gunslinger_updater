@@ -390,6 +390,39 @@ begin
   end;
 end;
 
+function DropBatFile(batname:string; oldname:string; newname:string):boolean;
+var
+  f:textfile;
+  i:integer;
+  params:string;
+begin
+  result:=false;
+
+  params:='';
+  for i:=1 to ParamCount do begin
+    params:= params + ParamStr(i)+' ';
+  end;
+
+  assignfile(f, batname);
+  try
+    batname:=UTF8ToWinCP(batname);
+    oldname:=UTF8ToWinCP(oldname);
+    newname:=UTF8ToWinCP(newname);
+    rewrite(f);
+    writeln(f, 'chcp '+inttostr(GetACP())+' >nul');
+    writeln(f, ':1');
+    writeln(f, 'del "'+oldname+'"');
+    writeln(f, 'if exist "'+oldname+'" goto 1');
+    writeln(f, 'move "'+newname+'" "'+oldname+'"');
+    writeln(f, '@start "" "'+oldname+'" '+params);
+    writeln(f, 'del "'+batname+'"');
+    closefile(f);
+    result:=true;
+  except
+    result:=false;
+  end;
+end;
+
 { TForm1 }
 
 function TForm1.StartDownloadFileAsync(link:string; filename:string):boolean;
@@ -425,6 +458,7 @@ var
   progress:FZFileActualizingProgressInfo;
   confirmed:boolean;
   parent_root:string;
+  bat:string;
 begin
   timer1.Enabled:=false;
   timer1.Interval:=0;
@@ -532,15 +566,19 @@ begin
         end else begin
           SetStatus('Running update...');
 
-          //hack - helps to avoid mis-restarting
-          hfile:=CreateFile(PAnsiChar(UTF8ToWinCP(_downloader_update_params.filename)), GENERIC_READ, FILE_SHARE_READ, nil, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
-          CloseHandle(hfile);
-
-          FillMemory(@si, sizeof(si),0);
-          FillMemory(@pi, sizeof(pi),0);
-          si.cb:=sizeof(si);
-          if not CreateProcess(PAnsiChar(UTF8ToWinCP(_downloader_update_params.filename)), '', nil, nil, false, 0, nil, nil, si, pi) then begin
-            error_msg := 'Can''t run update, please try again';
+          bat:=Application.ExeName+'.update.bat';
+          if not DropBatFile(bat, Application.ExeName, _downloader_update_params.filename) then begin
+            error_msg := 'Can''t write BAT file, please check anti-virus settings or copy the update manually';
+          end else begin
+            FillMemory(@si, sizeof(si),0);
+            FillMemory(@pi, sizeof(pi),0);
+            si.cb:=sizeof(si);
+            if not CreateProcess(nil, PAnsiChar('cmd.exe /C @start "" /B "'+UTF8ToWinCP(bat)+'"'), nil, nil, false, CREATE_NO_WINDOW, nil, nil, si, pi) then begin
+              error_msg := 'Can''t run update, please check anti-virus settings or copy the update manually';
+            end else begin
+              CloseHandle(pi.hProcess);
+              CloseHandle(pi.hThread);
+            end;
           end;
         end;
         ChangeState(DL_STATE_TERMINAL);
@@ -635,6 +673,8 @@ begin
             FillMemory(@pi, sizeof(pi),0);
             si.cb:=sizeof(si);
             CreateProcess('bin\xrEngine.exe', '', nil, nil, false, 0, nil, nil, @si, @pi);
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
             SetStatus('Exiting updater');
           end;
         end else begin
@@ -674,57 +714,16 @@ end;
 procedure TForm1.FormCreate(Sender: TObject);
 var
   path:string;
-  si:TStartupInfo;
-  pi:TProcessInformation;
-
-  cnt:integer;
-  status:boolean;
-  hfile:handle;
 const
-  update_suffix:string = '.update.exe';
+  update_suffix:string = '.upd.exe';
 begin
   self.Caption:=self.Caption+' (Build ' + {$INCLUDE %DATE} + ')';
   FZLogMgr.Get.Write(self.Caption, FZ_LOG_IMPORTANT_INFO);
 
   _downloader_update_params.filename:=Application.ExeName+update_suffix;
 
-  if rightstr(Application.ExeName, length(update_suffix)) = update_suffix then begin
-    // It's an update for downloader, let's copy it instead of the original one
-    path:=leftstr(Application.ExeName, length(Application.ExeName)-length(update_suffix));
-
-    status:=false;
-    for cnt:=0 to 10 do begin
-      DeleteFile(PAnsiChar(UTF8ToWinCP(path)));
-      status:=CopyFile(PAnsiChar(UTF8ToWinCP(Application.ExeName)), PAnsiChar(UTF8ToWinCP(path)), false);
-      if status then break;
-      // Wait while updater terminates
-      Sleep(1000);
-    end;
-
-    if status then begin
-      //hack - helps to avoid mis-restarting
-      hfile:=CreateFile(PAnsiChar(UTF8ToWinCP(path)), GENERIC_READ, FILE_SHARE_READ, nil, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
-      CloseHandle(hfile);
-
-      FillMemory(@si, sizeof(si),0);
-      FillMemory(@pi, sizeof(pi),0);
-      si.cb:=sizeof(si);
-      if not CreateProcess(PAnsiChar(UTF8ToWinCP(path)), '', nil, nil, false, 0, nil, nil, si, pi) then begin
-        MessageBox(self.Handle, 'Can''t restart updater executable module. Please do it manually', 'Error!', MB_ICONERROR or MB_OK);
-      end;
-    end else begin
-      MessageBox(self.Handle, 'Can''t replace updater executable module. Please try again or replace it manually', 'Error!', MB_ICONERROR or MB_OK);
-    end;
-    Application.Terminate;
-  end;
-
   if FileExists(_downloader_update_params.filename) then begin
-    status:=false;
-    for cnt:=0 to 10 do begin
-      status:=DeleteFile(PAnsiChar(UTF8ToWinCP(_downloader_update_params.filename)));
-      if status then break;
-      Sleep(1000);
-    end;
+     DeleteFile(PAnsiChar(UTF8ToWinCP(_downloader_update_params.filename)));
   end;
 
   path:=GetCurrentDir();
