@@ -119,6 +119,7 @@ const
   UPDATER_SECTION:string ='updater';
 begin
   result:=false;
+  cur_md5:='';
   if not GetFileMD5(Application.ExeName, cur_md5) then exit;
   cur_md5:=LowerCase(cur_md5);
 
@@ -284,6 +285,7 @@ const
 begin
   result:=false;
 
+  setlength(files, 0);
   PushToArray(files, 'resources\configs.db');
   PushToArray(files, 'resources\resources.db0');
   PushToArray(files, 'resources\resources.db1');
@@ -304,6 +306,7 @@ begin
     end;
   end;
 
+  md5:='';
   if not GetFileMD5(dir+files[0], md5) then exit;
   md5:=uppercase(md5);
   if md5<>CONFIGS_MD5 then exit;
@@ -491,6 +494,7 @@ begin
           _filelist.SortBySize();
           _filelist.Dump(FZ_LOG_INFO);
           progress.status:=FZ_ACTUALIZING_BEGIN;
+          tid:=0;
           _th_handle:=CreateThread(nil, 0, @StartActualization, self, 0, tid);
           if _th_handle <> 0 then begin
             SetStatus('Downloading content...');

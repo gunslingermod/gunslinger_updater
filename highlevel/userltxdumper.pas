@@ -10,8 +10,6 @@ implementation
 uses sysutils;
 
 procedure DumpUserLtx(var f:textfile; scr_w:cardinal; scr_h:cardinal);
-var
-  scr_str:string;
 begin
   writeln(f, '_preset Minimum');
   writeln(f, 'ai_aim_max_angle 0.7854');
