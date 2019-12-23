@@ -50,6 +50,7 @@ type
     _master_list_path:string;
     _downloader_update_params:DownloaderUpdateParams;
     _dl_info:CurrentDownloadInfo;
+    _ignore_maintenance:boolean;
 
     _dlThread:FZDownloaderThread;
     _dl:FZFileDownloader;
@@ -137,7 +138,7 @@ begin
   end;
 end;
 
-function ParseFileList(list_name:string; filelist:FZFiles):MasterListParseResult;
+function ParseFileList(list_name:string; filelist:FZFiles; ignore_maintenance:boolean):MasterListParseResult;
 var
   cfg:FZIniFile;
   section, filename, fileurl:string;
@@ -148,7 +149,7 @@ begin
 
   cfg:=FZIniFile.Create(UTF8ToWinCP(list_name));
   try
-    if cfg.GetBoolDef('main', 'maintenance', false) then begin
+    if not ignore_maintenance and cfg.GetBoolDef('main', 'maintenance', false) then begin
       result:=MASTERLIST_MAINTENANCE;
       exit;
     end;
@@ -459,7 +460,7 @@ begin
         _filelist.SetCallback(@DownloadCallback, @_dl_info);
 
         if _filelist.ScanPath(UTF8ToWinCP(GetCurrentDir())) then begin
-          master_parse_res:=ParseFileList(_master_list_path, _filelist);
+          master_parse_res:=ParseFileList(_master_list_path, _filelist, _ignore_maintenance);
         end;
         DeleteFile(PAnsiChar(UTF8ToWinCP(_master_list_path)));
 
@@ -703,12 +704,20 @@ begin
   end;
   path:=path+'files.list';
 
-  if ParamCount = 0 then begin
+
+if ParamCount = 0 then begin
     // TODO: Randomize array
     PushToArray(_master_links, 'https://raw.githubusercontent.com/gunslingermod/updater_links/master/guns.list');
-  end else if paramcount >= 1  then begin
+  end else begin
     FZLogMgr.Get.Write('Set master link to "'+ParamStr(1)+'"', FZ_LOG_INFO);
     PushToArray(_master_links, ParamStr(1));
+  end;
+
+  if (paramcount >= 2) and (trim(ParamStr(2))='true') then begin
+    FZLogMgr.Get.Write('Ignoring maintenance mode', FZ_LOG_INFO);
+    _ignore_maintenance:=true;
+  end else begin
+    _ignore_maintenance:=false;
   end;
 
   _master_url_index:=0;
