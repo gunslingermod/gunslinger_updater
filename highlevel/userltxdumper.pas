@@ -4,10 +4,14 @@ unit userltxdumper;
 
 interface
 
-procedure DumpUserLtx(var f:textfile);
+procedure DumpUserLtx(var f:textfile; scr_w:cardinal; scr_h:cardinal);
 
 implementation
-procedure DumpUserLtx(var f:textfile);
+uses sysutils;
+
+procedure DumpUserLtx(var f:textfile; scr_w:cardinal; scr_h:cardinal);
+var
+  scr_str:string;
 begin
   writeln(f, '_preset Minimum');
   writeln(f, 'ai_aim_max_angle 0.7854');
@@ -74,19 +78,16 @@ begin
   writeln(f, 'bind quick_use_2 kF2');
   writeln(f, 'bind quick_use_3 kF3');
   writeln(f, 'bind quick_use_4 kF4');
-  writeln(f, 'bind quick_save kDELETE');
+  writeln(f, 'bind quick_save kF7');
+  writeln(f, 'bind quick_load kF8');
   writeln(f, 'bind wpn_laser kSLASH');
   writeln(f, 'bind wpn_torch k8');
+  writeln(f, 'bind quick_grenade kLMENU');
   writeln(f, 'bind wpn_zoom_alter mouse3');
   writeln(f, 'bind quick_kick kZ');
   writeln(f, 'bind scope_brightness_plus kADD');
   writeln(f, 'bind scope_brightness_minus kSUBTRACT');
-  writeln(f, 'bind_sec left kLBRACKET');
   writeln(f, 'bind_sec crouch kLCONTROL');
-  writeln(f, 'bind_sec wpn_fire kNUMPAD0');
-  writeln(f, 'bind_sec wpn_zoom kDECIMAL');
-  writeln(f, 'bind_sec wpn_firemode_next kNUMPAD1');
-  writeln(f, 'bind_sec inventory kLMENU');
   writeln(f, 'cam_inert 0.');
   writeln(f, 'cam_slide_inert 0.');
   writeln(f, 'cl_cod_pickup_mode 0');
@@ -346,7 +347,12 @@ begin
   writeln(f, 'sv_warm_up 3600');
   writeln(f, 'sv_write_update_bin 0');
   writeln(f, 'texture_lod 3');
-  writeln(f, 'vid_mode 1024x768');
+
+  if (scr_w = 0) or (scr_h = 0) then begin
+    scr_w:=1024;
+    scr_h:=768;
+  end;
+  writeln(f, 'vid_mode '+inttostr(scr_w)+'x'+inttostr(scr_h));
   writeln(f, 'wpn_aim_toggle 0');
 end;
 

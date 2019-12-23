@@ -366,7 +366,7 @@ begin
     assignfile(f, path);
     try
       rewrite(f);
-      DumpUserLtx(f);
+      DumpUserLtx(f, screen.Width, screen.Height);
       closefile(f);
       result:=true;
     except
