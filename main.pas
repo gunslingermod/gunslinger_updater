@@ -83,6 +83,7 @@ var
   hfile, hmap:handle;
   data:pointer;
 begin
+  result:=false;
   hfile:=CreateFile(PAnsiChar(UTF8ToWinCP(filename)), GENERIC_READ, FILE_SHARE_READ, nil, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
   if hfile = INVALID_HANDLE_VALUE then begin
     exit;
@@ -139,6 +140,24 @@ begin
   end;
 end;
 
+function IsMaintenance(list_name:string; cfg:FZIniFile=nil):boolean;
+var
+  owncfg:boolean;
+begin
+  result:=true;
+  owncfg:=false;
+  if cfg = nil then begin
+    cfg:=FZIniFile.Create(UTF8ToWinCP(list_name));
+    owncfg:=true;
+  end;
+
+  result:=cfg.GetBoolDef('main', 'maintenance', false);
+
+  if owncfg then begin
+    cfg.Free;
+  end;
+end;
+
 function ParseFileList(list_name:string; filelist:FZFiles; ignore_maintenance:boolean):MasterListParseResult;
 var
   cfg:FZIniFile;
@@ -150,7 +169,7 @@ begin
 
   cfg:=FZIniFile.Create(UTF8ToWinCP(list_name));
   try
-    if not ignore_maintenance and cfg.GetBoolDef('main', 'maintenance', false) then begin
+    if not ignore_maintenance and IsMaintenance(list_name, cfg) then begin
       result:=MASTERLIST_MAINTENANCE;
       exit;
     end;
@@ -451,7 +470,6 @@ var
   si:TStartupInfo;
   pi:TProcessInformation;
   master_parse_res:MasterListParseResult;
-  hfile:handle;
   tid:cardinal;
   i:integer;
   itm_data:FZFileItemData;
@@ -459,6 +477,7 @@ var
   confirmed:boolean;
   parent_root:string;
   bat:string;
+  md5:string;
 begin
   timer1.Enabled:=false;
   timer1.Interval:=0;
@@ -497,7 +516,10 @@ begin
 
   DL_STATE_MASTERLIST_PARSE:
     begin
-      if GetDownloaderUpdateParams(_master_list_path, _downloader_update_params) and (length(_downloader_update_params.url) > 0) then begin
+      if not _ignore_maintenance and IsMaintenance(_master_list_path, nil) then begin
+        error_msg:='Maintenance is in progress, please try again later';
+        ChangeState(DL_STATE_TERMINAL);
+      end else if GetDownloaderUpdateParams(_master_list_path, _downloader_update_params) and (length(_downloader_update_params.url) > 0) then begin
         SetStatus('Updating downloader...');
         if not StartDownloadFileAsync(_downloader_update_params.url, _downloader_update_params.filename) then begin
           error_msg := 'Can''t downloader update for downloader';
@@ -560,9 +582,12 @@ begin
 
   DL_STATE_UPDATE_DOWNLOADER:
     begin
+      md5:='';
       if not _dl.IsDownloading() then begin
         if not _dl.IsSuccessful() then begin
           error_msg := 'Error while downloading update';
+        end else if not GetFileMD5(_downloader_update_params.filename, md5) or (lowercase(_downloader_update_params.md5)<>lowercase(md5))  then begin
+          error_msg:='Checking update integrity failed, please try again';
         end else begin
           SetStatus('Running update...');
 
