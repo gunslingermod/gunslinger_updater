@@ -235,6 +235,7 @@ function ExtractParentFromFsGame():string;
 var
   f:textfile;
   line:string;
+  i:integer;
 begin
   result:='';
 
@@ -246,7 +247,13 @@ begin
       readln(f, line);
       line:=trim(line);
       if leftstr(line, length('$game_root$')) = '$game_root$' then begin
-        result:=line;
+        result:='';
+        for i:= length(line) downto 1 do begin
+          if line[i] = '|' then begin
+            if length(result) > 0 then break else continue;
+          end;
+          result:=line[i]+result;
+        end;
         break;
       end;
     end;
@@ -254,6 +261,8 @@ begin
   except
     result:='';
   end;
+
+  result:=WinCPToUTF8(trim(result));
 end;
 
 function SelectGuessedGameInstallDir():string;
@@ -272,6 +281,8 @@ begin
   except
     result:='';
   end;
+
+  result:=WinCPToUTF8(trim(result));
 end;
 
 function IsGameInstalledInDir(dir:string):boolean;
@@ -322,6 +333,7 @@ begin
   assignfile(f, 'fsgame.ltx');
   try
     rewrite(f);
+    parent_root:= '$game_root$ = false| false| '+ UTF8ToWinCP(parent_root);
     writeln(f, parent_root);
     writeln(f, '$app_data_root$ = false | false | $fs_root$| userdata\');
     writeln(f, '$arch_dir$ = false| false| $game_root$');
@@ -411,6 +423,7 @@ var
   i:integer;
   itm_data:FZFileItemData;
   progress:FZFileActualizingProgressInfo;
+  confirmed:boolean;
   parent_root:string;
 begin
   timer1.Enabled:=false;
@@ -581,21 +594,29 @@ begin
 
   DL_STATE_DATA_LOADING_COMPLETED:
     begin
+      confirmed:=true;
       parent_root:=ExtractParentFromFsGame();
 
-      if (length(parent_root) = 0) then begin
-        SelectDirectoryDialog1.InitialDir:=SelectGuessedGameInstallDir();
+      if (length(parent_root) = 0) or not IsGameInstalledInDir(parent_root) then begin
+        confirmed:=false;
+        SelectDirectoryDialog1.FileName:='';
+        if length(parent_root) > 0 then begin
+          SelectDirectoryDialog1.InitialDir:=parent_root;
+        end else begin
+          SelectDirectoryDialog1.InitialDir:=SelectGuessedGameInstallDir();
+        end;
+
         if SelectDirectoryDialog1.Execute() then begin
           i := IDYES;
           if not IsGameInstalledInDir(SelectDirectoryDialog1.FileName) then begin
             i:=MessageBox(self.Handle, PAnsiChar('Looks like the game is NOT installed in the selected directory "'+UTF8ToWinCP(SelectDirectoryDialog1.FileName)+'".'+chr($0d)+chr($0a)+'Continue anyway?'), 'Please confirm', MB_YESNO or MB_ICONQUESTION);
           end;
           if i = IDYES then begin
-            parent_root:=UTF8ToWinCP(SelectDirectoryDialog1.FileName);
+            parent_root:=SelectDirectoryDialog1.FileName;
             if (length(parent_root)>0) and (parent_root[length(parent_root)]<>'\') and (parent_root[length(parent_root)]<>'/') then begin
               parent_root:=parent_root+'\';
             end;
-            parent_root:= '$game_root$ = false| false| '+ parent_root;
+            confirmed:=true;
           end;
         end else begin
           i:=MessageBox(self.Handle, 'Stop updating?', 'Please confirm', MB_YESNO or MB_ICONQUESTION);
@@ -606,7 +627,7 @@ begin
         end;
       end;
 
-      if (length(parent_root) <> 0) then begin
+      if (length(parent_root) <> 0) and confirmed then begin
         if CreateFsgame(parent_root) and CheckAndCorrectUserltx() then begin
           i:=MessageBox(self.Handle, PAnsiChar('The mod has been successfully updated! Do you want to run the game?'), 'Congratulations!', MB_YESNO or MB_ICONINFORMATION);
           if i = IDYES then begin
