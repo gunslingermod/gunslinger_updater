@@ -5,7 +5,7 @@ object Form1: TForm1
   Width = 594
   BorderIcons = [biMinimize]
   BorderStyle = bsToolWindow
-  Caption = 'GUNSLINGER MOD Updater'
+  Caption = 'GUNSLINGER Mod Updater'
   ClientHeight = 425
   ClientWidth = 594
   OnCreate = FormCreate
