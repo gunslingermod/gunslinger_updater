@@ -111,7 +111,7 @@ var
   i:integer;
   status:boolean;
 begin
-  result:=false;
+  result:=true;
   processed_part:='';
   for i:=1 to length(path) do begin
     if (path[i]='\') or (path[i] = '/') then begin
@@ -120,14 +120,16 @@ begin
           status:=CreateDirectory(PAnsiChar(processed_part), nil);
           if not status then begin
              result:=false;
-             exit;
+             break;
           end;
         end;
       end;
     end;
     processed_part := processed_part+path[i];
   end;
-  result:=true;
+  if result and (path[length(path)]<>'/') and (path[length(path)]<>'\') then begin
+    result:=CreateDirectory(PAnsiChar(processed_part), nil);
+  end;
 end;
 
 function GetDummyChecks():FZCheckParams;
