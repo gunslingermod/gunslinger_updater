@@ -249,7 +249,10 @@ begin
         exit;
       end;
 
-      if cfg.GetBoolDef(section,'ignore', false) then begin
+      if cfg.GetBoolDef(section,'delete', false) then begin
+        // The file will be processed later while checking the list
+        FZLogMgr.Get.Write('File #'+inttostr(i)+' ('+filename+') needs removing', FZ_LOG_INFO);
+      end else if cfg.GetBoolDef(section,'ignore', false) then begin
         if not fileList.AddIgnoredFile(filename) then begin
           FZLogMgr.Get.Write('Cannot add to ignored file #'+inttostr(i)+' ('+filename+')', FZ_LOG_ERROR);
           exit;
@@ -287,7 +290,47 @@ begin
   finally
     cfg.Free();
   end;
+end;
 
+procedure FilterDeletionItems(list_name:string; filelist:FZFiles);
+var
+  cfg:FZIniFile;
+  i, j:integer;
+  section, filename, itmname:string;
+  itm_data:FZFileItemData;
+  delflag:boolean;
+begin
+  cfg:=FZIniFile.Create(UTF8ToWinCP(list_name));
+  try
+    // we won't delete files for safety (except explicitely defined ones)
+    for i:=filelist.EntriesCount() downto 0 do begin
+      itm_data:=filelist.GetEntry(i);
+      if (itm_data.required_action = FZ_FILE_ACTION_UNDEFINED) then begin
+        delflag:=false;
+
+        // Check if the file is marked as 'deleted' in the config
+        for j:=0 to cfg.GetIntDef('main', 'files_count', 0)-1 do begin
+          section:='file_'+inttostr(j);
+          filename:=stringreplace(cfg.GetStringDef(section, 'path', '' ), '/', '\',[rfReplaceAll]);
+          itmname:=stringreplace(itm_data.name, '/', '\', [rfReplaceAll]);
+          if filename=itmname then begin
+            delflag:=cfg.GetBoolDef(section,'delete', false);
+            break;
+          end;
+        end;
+
+        if not delflag then begin
+          filelist.DeleteEntry(i);
+          FZLogMgr.Get.Write('Skipping file #'+inttostr(i)+' ('+itm_data.name+')', FZ_LOG_ERROR);
+        end else begin
+          FZLogMgr.Get.Write('Leave file #'+inttostr(i)+' ('+itm_data.name+') in the list for removing', FZ_LOG_ERROR);
+        end;
+
+      end;
+    end;
+  finally
+    cfg.Free();
+  end;
 end;
 
 function DownloadCallback(info:FZFileActualizingProgressInfo; userdata:pointer):boolean;
@@ -601,15 +644,8 @@ begin
           master_parse_res:=ParseFileList(_master_list_path, _filelist, _ignore_maintenance);
         end;
 
-        //iterate over all records and delete the ones which shouldn't be deleted
         if master_parse_res = MASTERLIST_PARSE_OK then begin
-          // we won't delete files at all for safety
-          for i:=_filelist.EntriesCount() downto 0 do begin
-            itm_data:=_filelist.GetEntry(i);
-            if (itm_data.required_action = FZ_FILE_ACTION_UNDEFINED) then begin
-              _filelist.DeleteEntry(i);
-            end;
-          end;
+          FilterDeletionItems(_master_list_path, _filelist);
         end;
 
         if master_parse_res = MASTERLIST_PARSE_ERROR then begin
