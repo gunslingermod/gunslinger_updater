@@ -8,7 +8,7 @@ uses
   Classes, SysUtils, FileUtil, Forms, Controls, Graphics, Dialogs, ComCtrls,
   StdCtrls, ExtCtrls,
 
-  HttpDownloader, FileManager, Windows, LazUTF8;
+  HttpDownloader, FileManager, Windows, LazUTF8, Localizer;
 
 type
 
@@ -83,7 +83,7 @@ begin
   setlength(arr, val);
 
   val:=GetCurrentDirectory(val, @arr[0]);
-  if (val <=0) or (val >= length(arr)) then exit;
+  if (val <=0) or (val >= cardinal(length(arr))) then exit;
 
   result:=PAnsiChar(@arr[0]);
 end;
@@ -575,7 +575,6 @@ var
   master_parse_res:MasterListParseResult;
   tid:cardinal;
   i:integer;
-  itm_data:FZFileItemData;
   progress:FZFileActualizingProgressInfo;
   confirmed:boolean;
   parent_root:string;
@@ -589,9 +588,9 @@ begin
   case _state of
   DL_STATE_INIT:
     begin
-      SetStatus('Downloading master-list...');
+      SetStatus('stage_dl_masterlist');
       if not StartDownloadFileAsync(_master_links[_master_url_index], _master_list_path) then begin
-        error_msg := 'Can''t start master-list download';
+        error_msg := 'err_master_start_dl';
         ChangeState(DL_STATE_TERMINAL);
       end else begin
         ChangeState(DL_STATE_MASTERLIST_LOADING);
@@ -607,11 +606,11 @@ begin
             FZLogMgr.Get.Write('Switching to masterlist #: '+inttostr(_master_url_index)+': '+_master_links[_master_url_index], FZ_LOG_IMPORTANT_INFO);
             ChangeState(DL_STATE_INIT);
           end else begin
-            error_msg := 'Error while downloading master-list';
+            error_msg := 'err_master_dl';
             ChangeState(DL_STATE_TERMINAL);
           end;
         end else begin
-          SetStatus('Parsing master-list...');
+          SetStatus('stage_parse_masterlist');
           ChangeState(DL_STATE_MASTERLIST_PARSE);
         end;
         EndDownloadFileAsync();
@@ -621,12 +620,12 @@ begin
   DL_STATE_MASTERLIST_PARSE:
     begin
       if not _ignore_maintenance and IsMaintenance(_master_list_path, nil) then begin
-        error_msg:='Maintenance is in progress, please try again later';
+        error_msg:='err_maintenance';
         ChangeState(DL_STATE_TERMINAL);
       end else if GetDownloaderUpdateParams(_master_list_path, _downloader_update_params) and (length(_downloader_update_params.url) > 0) then begin
-        SetStatus('Updating downloader...');
+        SetStatus('stage_update_downloader');
         if not StartDownloadFileAsync(_downloader_update_params.url, _downloader_update_params.filename) then begin
-          error_msg := 'Can''t downloader update for downloader';
+          error_msg := 'err_updater_update_dl';
           ChangeState(DL_STATE_TERMINAL);
         end else begin
           ChangeState(DL_STATE_UPDATE_DOWNLOADER);
@@ -649,11 +648,11 @@ begin
         end;
 
         if master_parse_res = MASTERLIST_PARSE_ERROR then begin
-          error_msg:='Invalid masterlist content';
+          error_msg:='err_invalid_masterlist';
         end else if master_parse_res = MASTERLIST_MAINTENANCE then begin
-          error_msg:='Maintenance is in progress, please try again later';
+          error_msg:='err_maintenance';
         end else if master_parse_res = MASTERLIST_CANTPARSE then begin
-          error_msg:='Downloaded masterlist file is not available. Please check access rights and add the directory to the antivirus exclusions';
+          error_msg:='err_masterlist_open';
         end;
 
         if master_parse_res = MASTERLIST_PARSE_OK then begin
@@ -663,10 +662,10 @@ begin
           tid:=0;
           _th_handle:=CreateThread(nil, 0, @StartActualization, self, 0, tid);
           if _th_handle <> 0 then begin
-            SetStatus('Downloading content...');
+            SetStatus('stage_dl_content');
             ChangeState(DL_STATE_DATA_LOADING);
           end else begin
-            error_msg:='Problems while creating downloader thread';
+            error_msg:='err_cant_start_dl_thread';
             ChangeState(DL_STATE_TERMINAL);
           end;
         end else begin
@@ -684,21 +683,21 @@ begin
       md5:='';
       if not _dl.IsDownloading() then begin
         if not _dl.IsSuccessful() then begin
-          error_msg := 'Error while downloading update';
+          error_msg := 'err_updater_update_dl';
         end else if not GetFileMD5(_downloader_update_params.filename, md5) or (lowercase(_downloader_update_params.md5)<>lowercase(md5))  then begin
-          error_msg:='Checking update integrity failed, please try again';
+          error_msg:='err_integrity_check_failure';
         end else begin
-          SetStatus('Running update...');
+          SetStatus('stage_run_downloader_update');
 
           bat:=GetExecutableName()+'.update.bat';
           if not DropBatFile(bat, GetExecutableName(), _downloader_update_params.filename) then begin
-            error_msg := 'Can''t write BAT file, please check anti-virus settings or copy the update manually';
+            error_msg := 'err_bat_copy_fail';
           end else begin
             FillMemory(@si, sizeof(si),0);
             FillMemory(@pi, sizeof(pi),0);
             si.cb:=sizeof(si);
             if not CreateProcess(nil, PAnsiChar('cmd.exe /C @start "" /B "'+UTF8ToWinCP(bat)+'"'), nil, nil, false, CREATE_NO_WINDOW, nil, nil, si, pi) then begin
-              error_msg := 'Can''t run update, please check anti-virus settings or copy the update manually';
+              error_msg := 'err_cant_run_update';
             end else begin
               CloseHandle(pi.hProcess);
               CloseHandle(pi.hThread);
@@ -730,18 +729,18 @@ begin
         FreeAndNil(_filelist);
 
         if (progress.status = FZ_ACTUALIZING_FINISHED) then begin
-          SetStatus('Finalizing...');
+          SetStatus('stage_finalizing');
           update_progress.Min:=0;
           update_progress.Max:=1;
           update_progress.Position:=1;
           self.Repaint;
           ChangeState(DL_STATE_DATA_LOADING_COMPLETED);
         end else begin
-          error_msg := 'Downloading is not successful, please try again';
+          error_msg := 'err_dl_not_successful';
           ChangeState(DL_STATE_TERMINAL);
         end;
       end else if progress.status = FZ_ACTUALIZING_VERIFYING then begin
-        SetStatus('Verifying resources...');
+        SetStatus('stage_verifying');
         update_progress.Min:=0;
         update_progress.Max:=1;
         update_progress.Position:=1;
@@ -767,12 +766,13 @@ begin
         end else begin
           SelectDirectoryDialog1.InitialDir:=SelectGuessedGameInstallDir();
         end;
+        SelectDirectoryDialog1.Title:=LocalizeString('msg_select_game_dir');
 
-        MessageBox(self.Handle,'Now please select the directory where the original game is installed', '', MB_OK or MB_ICONINFORMATION);
+        Application.MessageBox(PAnsiChar(LocalizeString('msg_select_game_dir')), PAnsiChar(LocalizeString('msg_confirm')), MB_OK or MB_ICONINFORMATION);
         if SelectDirectoryDialog1.Execute() then begin
           i := IDYES;
           if not IsGameInstalledInDir(SelectDirectoryDialog1.FileName) then begin
-            i:=MessageBox(self.Handle, PAnsiChar('Looks like the game is NOT installed in the selected directory "'+UTF8ToWinCP(SelectDirectoryDialog1.FileName)+'".'+chr($0d)+chr($0a)+'Continue anyway?'), 'Please confirm', MB_YESNO or MB_ICONQUESTION);
+            i:=Application.MessageBox(PAnsiChar(LocalizeString('msg_no_game_in_dir') + ' "'+UTF8ToWinCP(SelectDirectoryDialog1.FileName)+'".'+chr($0d)+chr($0a)+LocalizeString('msg_continue_anyway')), PAnsiChar(LocalizeString('msg_confirm')), MB_YESNO or MB_ICONQUESTION);
           end;
           if i = IDYES then begin
             parent_root:=SelectDirectoryDialog1.FileName;
@@ -782,9 +782,9 @@ begin
             confirmed:=true;
           end;
         end else begin
-          i:=MessageBox(self.Handle, 'Stop updating?', 'Please confirm', MB_YESNO or MB_ICONQUESTION);
+          i:=Application.MessageBox(PAnsiChar(LocalizeString('msg_cancel_install')), PAnsiChar(LocalizeString('msg_confirm')), MB_YESNO or MB_ICONQUESTION);
           if i = IDYES then begin
-            SetStatus('Exiting updater');
+            SetStatus('stage_exiting');
             ChangeState(DL_STATE_TERMINAL);
           end;
         end;
@@ -792,7 +792,7 @@ begin
 
       if (length(parent_root) <> 0) and confirmed then begin
         if CreateFsgame(parent_root) and CheckAndCorrectUserltx() then begin
-          i:=MessageBox(self.Handle, PAnsiChar('The mod has been successfully updated! Do you want to run the game?'), 'Congratulations!', MB_YESNO or MB_ICONINFORMATION);
+          i:=Application.MessageBox(PAnsiChar(LocalizeString('msg_success_run_game')), PAnsiChar(LocalizeString('msg_congrats')), MB_YESNO or MB_ICONINFORMATION);
           if i = IDYES then begin
             FillMemory(@si, sizeof(si),0);
             FillMemory(@pi, sizeof(pi),0);
@@ -800,10 +800,10 @@ begin
             CreateProcess('bin\xrEngine.exe', '', nil, nil, false, 0, nil, nil, @si, @pi);
             CloseHandle(pi.hProcess);
             CloseHandle(pi.hThread);
-            SetStatus('Exiting updater');
+            SetStatus('stage_exiting');
           end;
         end else begin
-          error_msg:='Can''t update configs';
+          error_msg:='err_cant_update_configs';
         end;
         ChangeState(DL_STATE_TERMINAL);
       end;
@@ -817,7 +817,7 @@ begin
 
   if length(error_msg) > 0 then begin
     FZLogMgr.Get.Write('Visual Error: '+error_msg, FZ_LOG_ERROR);
-    MessageBox(self.Handle, PAnsiChar(error_msg), 'Error!', MB_OK or MB_ICONERROR);
+    Application.MessageBox(PAnsiChar(LocalizeString(error_msg)), PAnsiChar(LocalizeString('err_caption')), MB_OK or MB_ICONERROR);
     Application.Terminate;
   end;
 
@@ -828,7 +828,7 @@ end;
 procedure TForm1.SetStatus(status: string);
 begin
   FZLogMgr.Get.Write('Change visual status: '+status, FZ_LOG_IMPORTANT_INFO);
-  update_status.Caption:=status;
+  update_status.Caption:=LocalizeString(status);
 end;
 
 procedure TForm1.ChangeState(state:DownloaderState);

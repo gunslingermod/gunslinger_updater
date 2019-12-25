@@ -101,7 +101,7 @@
         <PackageName Value="LCL"/>
       </Item1>
     </RequiredPackages>
-    <Units Count="13">
+    <Units Count="14">
       <Unit0>
         <Filename Value="gunslinger_updater.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -157,6 +157,11 @@
         <Filename Value="highlevel\userltxdumper.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit12>
+      <Unit13>
+        <Filename Value="highlevel\localizer.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Localizer"/>
+      </Unit13>
     </Units>
   </ProjectOptions>
   <CompilerOptions>
