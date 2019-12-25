@@ -418,7 +418,7 @@ begin
     if filedata.required_action=FZ_FILE_ACTION_UNDEFINED then begin
       //такого файла не было в списке. Сносим.
       FZLogMgr.Get.Write(FM_LBL+'Deleting file '+filedata.name, FZ_LOG_INFO);
-      if not SysUtils.DeleteFile(_parent_path+filedata.name)then begin
+      if not Windows.DeleteFile(PAnsiChar(_parent_path+filedata.name)) then begin
         FZLogMgr.Get.Write(FM_LBL+'Failed to delete '+filedata.name, FZ_LOG_ERROR);
         exit;
       end;
