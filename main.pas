@@ -569,7 +569,8 @@ end;
 
 procedure TForm1.Timer1Timer(Sender: TObject);
 var
-  error_msg:string;
+  error_msg, error_caption:string;
+  error_icon_style:DWORD;
   si:TStartupInfo;
   pi:TProcessInformation;
   master_parse_res:MasterListParseResult;
@@ -584,6 +585,8 @@ begin
   timer1.Enabled:=false;
   timer1.Interval:=0;
   error_msg:='';
+  error_caption:='err_caption';
+  error_icon_style:=MB_ICONERROR;
 
   case _state of
   DL_STATE_INIT:
@@ -621,6 +624,8 @@ begin
     begin
       if not _ignore_maintenance and IsMaintenance(_master_list_path, nil) then begin
         error_msg:='err_maintenance';
+        error_caption:='err_warning';
+        error_icon_style:=MB_ICONWARNING;
         ChangeState(DL_STATE_TERMINAL);
       end else if GetDownloaderUpdateParams(_master_list_path, _downloader_update_params) and (length(_downloader_update_params.url) > 0) then begin
         SetStatus('stage_update_downloader');
@@ -651,6 +656,8 @@ begin
           error_msg:='err_invalid_masterlist';
         end else if master_parse_res = MASTERLIST_MAINTENANCE then begin
           error_msg:='err_maintenance';
+          error_caption:='err_warning';
+          error_icon_style:=MB_ICONWARNING;
         end else if master_parse_res = MASTERLIST_CANTPARSE then begin
           error_msg:='err_masterlist_open';
         end;
@@ -817,7 +824,7 @@ begin
 
   if length(error_msg) > 0 then begin
     FZLogMgr.Get.Write('Visual Error: '+error_msg, FZ_LOG_ERROR);
-    Application.MessageBox(PAnsiChar(LocalizeString(error_msg)), PAnsiChar(LocalizeString('err_caption')), MB_OK or MB_ICONERROR);
+    Application.MessageBox(PAnsiChar(LocalizeString(error_msg)), PAnsiChar(LocalizeString(error_caption)), MB_OK or error_icon_style);
     Application.Terminate;
   end;
 

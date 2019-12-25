@@ -59,6 +59,8 @@ begin
     if locale = RUS_ID then result:='Не удалось обновить конфигурационные файлы мода' else result:='Can''t update configs';
   end else if str = 'err_caption' then begin
     if locale = RUS_ID then result:='Ошибка!' else result:='Error!';
+  end else if str = 'err_warning' then begin
+    if locale = RUS_ID then result:='Внимание!' else result:='Warning!';
   end else if str = 'msg_confirm' then begin
     if locale = RUS_ID then result:='Требуется подтверждение' else result:='Please confirm';
   end else if str = 'msg_congrats' then begin
