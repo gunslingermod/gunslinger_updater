@@ -732,6 +732,7 @@ begin
           SelectDirectoryDialog1.InitialDir:=SelectGuessedGameInstallDir();
         end;
 
+        MessageBox(self.Handle,'Now please select the directory where the original game is installed', '', MB_OK or MB_ICONINFORMATION);
         if SelectDirectoryDialog1.Execute() then begin
           i := IDYES;
           if not IsGameInstalledInDir(SelectDirectoryDialog1.FileName) then begin
