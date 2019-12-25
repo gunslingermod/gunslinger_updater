@@ -49,6 +49,7 @@ type
     _master_links:FZMasterLinkListAddr;
     _master_url_index:integer;
     _master_list_path:string;
+    _download_dir:string;
     _downloader_update_params:DownloaderUpdateParams;
     _dl_info:CurrentDownloadInfo;
     _ignore_maintenance:boolean;
@@ -69,6 +70,56 @@ implementation
 {$R *.lfm}
 uses LogMgr, FastMd5, IniFile, Registry, userltxdumper;
 
+// We need to use 'Native' WinApi functions to avoid problems with conversion of codepages
+// The functions return results using current locale codepeages
+function GetWorkingDirectory():string;
+var
+  arr:array of char;
+  val:cardinal;
+begin
+  result:='';
+  val:=GetCurrentDirectory(0, nil);
+  if val <= 0 then exit;
+  setlength(arr, val);
+
+  val:=GetCurrentDirectory(val, @arr[0]);
+  if (val <=0) or (val >= length(arr)) then exit;
+
+  result:=PAnsiChar(@arr[0]);
+end;
+
+function GetExecutableName():string;
+var
+  buf:array of char;
+  res:cardinal;
+  dir:string;
+begin
+  result:='';
+
+  setlength(buf, 260);
+  repeat
+    res:=GetModuleFileName(0, @buf[0], length(buf));
+    if res >= cardinal(length(buf)) then begin
+      setlength(buf, length(buf) * 2);
+    end else begin
+      result:=PAnsiChar(@buf[0]);
+      break;
+    end;
+  until res = 0;
+
+  if length(result) > 0 then begin
+    dir:=GetWorkingDirectory();
+    if (length(result) > length(dir)) and (leftstr(result, length(dir)) = dir) then begin
+      result:=rightstr(result, length(result)-length(dir));
+      if (result[1]<>'/') and (result[1]<>'\') then begin
+        result:='.\'+result;
+      end else begin
+        result:='.'+result;
+      end;
+    end;
+  end;
+end;
+
 procedure PushToArray(var a:FZMasterLinkListAddr; s:string);
 var
   i:integer;
@@ -83,9 +134,12 @@ var
   ctx:TMD5Context;
   hfile, hmap:handle;
   data:pointer;
+  fname:string;
 begin
   result:=false;
-  hfile:=CreateFile(PAnsiChar(UTF8ToWinCP(filename)), GENERIC_READ, FILE_SHARE_READ, nil, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+  fname:=UTF8ToWinCP(filename);
+  FZLogMgr.Get.Write('Opening "'+fname+'" for MD5 calculation', FZ_LOG_DBG);
+  hfile:=CreateFile(PAnsiChar(fname), GENERIC_READ, FILE_SHARE_READ, nil, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
   if hfile = INVALID_HANDLE_VALUE then begin
     exit;
   end;
@@ -117,12 +171,17 @@ var
   cur_md5, target_md5, target_url:string;
   target_size:cardinal;
   ini:FZIniFile;
+  fname:string;
 const
   UPDATER_SECTION:string ='updater';
 begin
   result:=false;
   cur_md5:='';
-  if not GetFileMD5(Application.ExeName, cur_md5) then exit;
+  fname:=GetExecutableName();
+  if not GetFileMD5(fname, cur_md5) then begin
+    FZLogMgr.Get.Write('Cannot calculate MD5 of "'+fname+'", cancelling update', FZ_LOG_ERROR);
+    exit;
+  end;
   cur_md5:=LowerCase(cur_md5);
 
   ini:=FZIniFile.Create(UTF8ToWinCP(list_name));
@@ -502,6 +561,7 @@ begin
         if not _dl.IsSuccessful() then begin
           if length(_master_links)-1 > _master_url_index then begin
             _master_url_index:=_master_url_index+1;
+            FZLogMgr.Get.Write('Switching to masterlist #: '+inttostr(_master_url_index)+': '+_master_links[_master_url_index], FZ_LOG_IMPORTANT_INFO);
             ChangeState(DL_STATE_INIT);
           end else begin
             error_msg := 'Error while downloading master-list';
@@ -535,11 +595,11 @@ begin
         _filelist.SetDlMode(FZ_DL_MODE_CURL);
         InitializeCriticalSection(_dl_info.lock);
         _filelist.SetCallback(@DownloadCallback, @_dl_info);
-
-        if _filelist.ScanPath(UTF8ToWinCP(GetCurrentDir())) then begin
+        FZLogMgr.Get.Write('Scanning path "'+_download_dir+'"', FZ_LOG_INFO);
+        if _filelist.ScanPath(_download_dir) then begin
+          FZLogMgr.Get.Write('Parsing master list "'+_master_list_path+'"', FZ_LOG_INFO);
           master_parse_res:=ParseFileList(_master_list_path, _filelist, _ignore_maintenance);
         end;
-        DeleteFile(PAnsiChar(UTF8ToWinCP(_master_list_path)));
 
         //iterate over all records and delete the ones which shouldn't be deleted
         if master_parse_res = MASTERLIST_PARSE_OK then begin
@@ -579,6 +639,8 @@ begin
           ChangeState(DL_STATE_TERMINAL);
         end;
       end;
+
+      DeleteFile(PAnsiChar(UTF8ToWinCP(_master_list_path)));
     end;
 
   DL_STATE_UPDATE_DOWNLOADER:
@@ -592,8 +654,8 @@ begin
         end else begin
           SetStatus('Running update...');
 
-          bat:=Application.ExeName+'.update.bat';
-          if not DropBatFile(bat, Application.ExeName, _downloader_update_params.filename) then begin
+          bat:=GetExecutableName()+'.update.bat';
+          if not DropBatFile(bat, GetExecutableName(), _downloader_update_params.filename) then begin
             error_msg := 'Can''t write BAT file, please check anti-virus settings or copy the update manually';
           end else begin
             FillMemory(@si, sizeof(si),0);
@@ -717,6 +779,7 @@ begin
   end;
 
   if length(error_msg) > 0 then begin
+    FZLogMgr.Get.Write('Visual Error: '+error_msg, FZ_LOG_ERROR);
     MessageBox(self.Handle, PAnsiChar(error_msg), 'Error!', MB_OK or MB_ICONERROR);
     Application.Terminate;
   end;
@@ -727,7 +790,7 @@ end;
 
 procedure TForm1.SetStatus(status: string);
 begin
-  FZLogMgr.Get.Write('Change visual status: '+status, FZ_LOG_INFO);
+  FZLogMgr.Get.Write('Change visual status: '+status, FZ_LOG_IMPORTANT_INFO);
   update_status.Caption:=status;
 end;
 
@@ -738,8 +801,6 @@ begin
 end;
 
 procedure TForm1.FormCreate(Sender: TObject);
-var
-  path:string;
 const
   update_suffix:string = '.upd.exe';
   border_size:integer = 10;
@@ -765,20 +826,14 @@ begin
   self.update_status.Top:=self.Height-self.update_progress.Height-border_size-self.update_status.Height-between_label_and_progress;
   self.update_status.Caption:='';
 
-
-
-  _downloader_update_params.filename:=Application.ExeName+update_suffix;
+  _downloader_update_params.filename:=GetExecutableName()+update_suffix;
 
   if FileExists(_downloader_update_params.filename) then begin
      DeleteFile(PAnsiChar(UTF8ToWinCP(_downloader_update_params.filename)));
   end;
 
-  path:=GetCurrentDir();
-  if (length(path)>0) and (path[length(path)]<>'\') and (path[length(path)]<>'/') then begin
-    path:=path+'\';
-  end;
-  path:=path+'files.list';
-
+  _download_dir:='.\';
+  _master_list_path:=_download_dir+'files.list';
 
 if ParamCount = 0 then begin
     // TODO: Randomize array
@@ -795,8 +850,6 @@ if ParamCount = 0 then begin
     _ignore_maintenance:=false;
   end;
 
-  _master_url_index:=0;
-  _master_list_path:=path;
   ChangeState(DL_STATE_INIT);
   Timer1.Enabled:=true;
 end;
