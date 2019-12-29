@@ -28,4 +28,5 @@ del 3rdparty\*.dcu
 
 rmdir /S /Q lib
 rmdir /S /Q backup
+rmdir /S /Q build
 exit

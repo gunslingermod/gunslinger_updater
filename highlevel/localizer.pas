@@ -18,7 +18,7 @@ begin
   result:=str;
   locale:=GetSystemDefaultLangID();
   if str = 'stage_dl_masterlist' then begin
-    if locale = RUS_ID then result:='Загрука мастер-списка...' else result:='Downloading master-list...';
+    if locale = RUS_ID then result:='Загрузка мастер-списка...' else result:='Downloading master-list...';
   end else if str = 'stage_parse_masterlist' then begin
     if locale = RUS_ID then result:='Обработка мастер-списка...' else result:='Parsing master-list...';
   end else if str = 'stage_update_downloader' then begin
