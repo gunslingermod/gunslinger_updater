@@ -53,6 +53,7 @@ type
     _downloader_update_params:DownloaderUpdateParams;
     _dl_info:CurrentDownloadInfo;
     _ignore_maintenance:boolean;
+    _uninstall_list:string;
 
     _dlThread:FZDownloaderThread;
     _dl:FZFileDownloader;
@@ -218,7 +219,7 @@ begin
   end;
 end;
 
-function ParseFileList(list_name:string; filelist:FZFiles; ignore_maintenance:boolean):MasterListParseResult;
+function ParseFileList(list_name:string; filelist:FZFiles; ignore_maintenance:boolean; var items_to_install:string):MasterListParseResult;
 var
   cfg:FZIniFile;
   section, filename, fileurl:string;
@@ -226,6 +227,7 @@ var
   fileCheckParams:FZCheckParams;
 begin
   result:=MASTERLIST_PARSE_ERROR;
+  items_to_install:='';
 
   cfg:=FZIniFile.Create(UTF8ToWinCP(list_name));
   try
@@ -283,6 +285,8 @@ begin
           FZLogMgr.Get.Write('Cannot update file info #'+inttostr(i)+' ('+filename+')', FZ_LOG_ERROR);
           exit;
         end;
+
+        items_to_install:=items_to_install+filename+chr($0d)+chr($0a);
       end;
 
       result:=MASTERLIST_PARSE_OK;
@@ -330,6 +334,23 @@ begin
     end;
   finally
     cfg.Free();
+  end;
+end;
+
+procedure DumpUninstallList(list:string);
+var
+  f:textfile;
+const
+  UNINSTALL_DATA_PATH:string='uninstall.dat';
+begin
+  assignfile(f, UNINSTALL_DATA_PATH);
+  try
+    rewrite(f);
+    writeln(f, list);
+    writeln(f, 'update.log');
+    writeln(f, GetExecutableName());
+    closefile(f)
+  except
   end;
 end;
 
@@ -645,7 +666,7 @@ begin
         FZLogMgr.Get.Write('Scanning path "'+_download_dir+'"', FZ_LOG_INFO);
         if _filelist.ScanPath(_download_dir) then begin
           FZLogMgr.Get.Write('Parsing master list "'+_master_list_path+'"', FZ_LOG_INFO);
-          master_parse_res:=ParseFileList(_master_list_path, _filelist, _ignore_maintenance);
+          master_parse_res:=ParseFileList(_master_list_path, _filelist, _ignore_maintenance, _uninstall_list);
         end;
 
         if master_parse_res = MASTERLIST_PARSE_OK then begin
@@ -798,6 +819,7 @@ begin
       end;
 
       if (length(parent_root) <> 0) and confirmed then begin
+        DumpUninstallList(_uninstall_list);
         if CreateFsgame(parent_root) and CheckAndCorrectUserltx() then begin
           i:=Application.MessageBox(PAnsiChar(LocalizeString('msg_success_run_game')), PAnsiChar(LocalizeString('msg_congrats')), MB_YESNO or MB_ICONINFORMATION);
           if i = IDYES then begin
