@@ -239,6 +239,7 @@ begin
     files_count:=cfg.GetIntDef('main', 'files_count', 0);
     if files_count = 0 then begin
       FZLogMgr.Get.Write('No files in file list', FZ_LOG_ERROR);
+      result:=MASTERLIST_PARSE_ERROR;
       exit;
     end;
 
@@ -248,6 +249,7 @@ begin
       filename:=cfg.GetStringDef(section, 'path', '' );
       if (length(filename)=0) then begin
         FZLogMgr.Get.Write('Invalid name for file #'+inttostr(i), FZ_LOG_ERROR);
+        result:=MASTERLIST_PARSE_ERROR;
         exit;
       end;
 
@@ -257,12 +259,14 @@ begin
       end else if cfg.GetBoolDef(section,'ignore', false) then begin
         if not fileList.AddIgnoredFile(filename) then begin
           FZLogMgr.Get.Write('Cannot add to ignored file #'+inttostr(i)+' ('+filename+')', FZ_LOG_ERROR);
+          result:=MASTERLIST_PARSE_ERROR;
           exit;
         end;
       end else begin
         fileurl:=cfg.GetStringDef(section, 'url', '' );
         if (length(fileurl)=0) then begin
           FZLogMgr.Get.Write('Invalid url for file #'+inttostr(i), FZ_LOG_ERROR);
+          result:=MASTERLIST_PARSE_ERROR;
           exit;
         end;
 
@@ -271,18 +275,21 @@ begin
         fileCheckParams.crc32:=0;
         if not cfg.GetHex(section, 'crc32', fileCheckParams.crc32) then begin
           FZLogMgr.Get.Write('Invalid crc32 for file #'+inttostr(i), FZ_LOG_ERROR);
+          result:=MASTERLIST_PARSE_ERROR;
           exit;
         end;
 
         fileCheckParams.size:=cfg.GetIntDef(section, 'size', 0);
         if fileCheckParams.size=0 then begin
           FZLogMgr.Get.Write('Invalid size for file #'+inttostr(i), FZ_LOG_ERROR);
+          result:=MASTERLIST_PARSE_ERROR;
           exit;
         end;
         fileCheckParams.md5:=LowerCase(cfg.GetStringDef(section, 'md5', ''));
 
         if not fileList.UpdateFileInfo(filename, fileurl, compression, fileCheckParams) then begin
           FZLogMgr.Get.Write('Cannot update file info #'+inttostr(i)+' ('+filename+')', FZ_LOG_ERROR);
+          result:=MASTERLIST_PARSE_ERROR;
           exit;
         end;
 
