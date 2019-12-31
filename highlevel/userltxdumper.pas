@@ -349,6 +349,10 @@ begin
   if (scr_w = 0) or (scr_h = 0) then begin
     scr_w:=1024;
     scr_h:=768;
+  end else if scr_w > 1920 then begin
+    // Fix to hide problem with double-render on R1 with resolutions greater than FullHD
+    scr_w:=1920;
+    scr_h:=1080;
   end;
   writeln(f, 'vid_mode '+inttostr(scr_w)+'x'+inttostr(scr_h));
   writeln(f, 'wpn_aim_toggle 0');
