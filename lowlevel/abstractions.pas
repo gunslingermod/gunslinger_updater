@@ -47,6 +47,7 @@ var
 begin
   s:=FZCommonHelper.GetCurTime()+' : '+txt;
   writeln(_log_file, s);
+  flush(_log_file);
 end;
 
 function FZNoGameVersion.ThreadSpawn(proc: uintptr; args: uintptr; name:PAnsiChar = nil; stack:cardinal = 0):boolean;
