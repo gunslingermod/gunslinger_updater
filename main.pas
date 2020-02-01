@@ -13,7 +13,7 @@ uses
 type
 
   MasterListParseResult = (MASTERLIST_PARSE_OK, MASTERLIST_PARSE_ERROR, MASTERLIST_MAINTENANCE, MASTERLIST_CANTPARSE);
-  DownloaderState = (DL_STATE_INIT, DL_STATE_MASTERLIST_LOADING, DL_STATE_UPDATE_DOWNLOADER, DL_STATE_MASTERLIST_PARSE, DL_STATE_DATA_LOADING, DL_STATE_DATA_LOADING_COMPLETED, DL_STATE_TERMINAL);
+  DownloaderState = (DL_STATE_INIT, DL_STATE_MASTERLIST_LOADING, DL_STATE_UPDATE_DOWNLOADER, DL_STATE_MASTERLIST_PARSE, DL_STATE_DATA_LOADING, DL_STATE_DATA_LOADING_COMPLETED, DL_STATE_RUN_GAME, DL_STATE_TERMINAL);
   FZMasterLinkListAddr = array of string;
 
   DownloaderUpdateParams = record
@@ -609,6 +609,8 @@ var
   parent_root:string;
   bat:string;
   md5:string;
+
+  next_state:DownloaderState;
 begin
   timer1.Enabled:=false;
   timer1.Interval:=0;
@@ -826,23 +828,29 @@ begin
       end;
 
       if (length(parent_root) <> 0) and confirmed then begin
+        next_state:=DL_STATE_TERMINAL;
         DumpUninstallList(_uninstall_list);
         if CreateFsgame(parent_root) and CheckAndCorrectUserltx() then begin
           i:=Application.MessageBox(PAnsiChar(LocalizeString('msg_success_run_game')), PAnsiChar(LocalizeString('msg_congrats')), MB_YESNO or MB_ICONINFORMATION);
           if i = IDYES then begin
-            FillMemory(@si, sizeof(si),0);
-            FillMemory(@pi, sizeof(pi),0);
-            si.cb:=sizeof(si);
-            CreateProcess('bin\xrEngine.exe', '', nil, nil, false, 0, nil, nil, @si, @pi);
-            CloseHandle(pi.hProcess);
-            CloseHandle(pi.hThread);
-            SetStatus('stage_exiting');
+            next_state:=DL_STATE_RUN_GAME;
           end;
         end else begin
           error_msg:='err_cant_update_configs';
         end;
-        ChangeState(DL_STATE_TERMINAL);
+        ChangeState(next_state);
       end;
+    end;
+
+  DL_STATE_RUN_GAME:
+    begin
+      FillMemory(@si, sizeof(si),0);
+      FillMemory(@pi, sizeof(pi),0);
+      si.cb:=sizeof(si);
+      CreateProcess('bin\xrEngine.exe', '', nil, nil, false, 0, nil, nil, @si, @pi);
+      CloseHandle(pi.hProcess);
+      CloseHandle(pi.hThread);
+      ChangeState(DL_STATE_TERMINAL);
     end;
 
   DL_STATE_TERMINAL:
