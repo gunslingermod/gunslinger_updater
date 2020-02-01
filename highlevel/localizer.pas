@@ -75,6 +75,8 @@ begin
     if locale = RUS_ID then result:='Прекратить установку?' else result:='Stop updating?';
   end else if str ='msg_success_run_game'  then begin
     if locale = RUS_ID then result:='Мод был успешно обновлен. Желаете сыграть прямо сейчас?' else result:='The mod has been successfully updated! Do you want to run the game?';
+  end else if str ='msg_noactions_run_game'  then begin
+    if locale = RUS_ID then result:='Версия мода актуальна, обновление не требуется. Желаете сыграть прямо сейчас?' else result:='The mod is in actual state, update is not needed. Do you want to run the game?';
 {  end else if str =  then begin
     if locale = RUS_ID then result:= else result:=;
 }  end;

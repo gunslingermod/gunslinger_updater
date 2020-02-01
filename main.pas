@@ -59,6 +59,7 @@ type
     _dl:FZFileDownloader;
     _th_handle:THandle;
     _filelist:FZFiles;
+    _mod_initially_actual:boolean;
 
   public
 
@@ -344,6 +345,19 @@ begin
   end;
 end;
 
+function IsAllFilesActual(filelist:FZFiles):boolean;
+var
+  i:integer;
+begin
+  result:=true;
+  for i:=0 to filelist.EntriesCount()-1 do begin
+    if (filelist.GetEntry(i).required_action <> FZ_FILE_ACTION_NO) and (filelist.GetEntry(i).required_action<>FZ_FILE_ACTION_IGNORE) then begin
+      result:=false;
+      break;
+    end;
+  end;
+end;
+
 procedure DumpUninstallList(list:string);
 var
   f:textfile;
@@ -622,6 +636,7 @@ begin
   DL_STATE_INIT:
     begin
       SetStatus('stage_dl_masterlist');
+      _mod_initially_actual:=false;
       if not StartDownloadFileAsync(_master_links[_master_url_index], _master_list_path) then begin
         error_msg := 'err_master_start_dl';
         ChangeState(DL_STATE_TERMINAL);
@@ -695,15 +710,23 @@ begin
         if master_parse_res = MASTERLIST_PARSE_OK then begin
           _filelist.SortBySize();
           _filelist.Dump(FZ_LOG_INFO);
-          progress.status:=FZ_ACTUALIZING_BEGIN;
-          tid:=0;
-          _th_handle:=CreateThread(nil, 0, @StartActualization, self, 0, tid);
-          if _th_handle <> 0 then begin
-            SetStatus('stage_dl_content');
-            ChangeState(DL_STATE_DATA_LOADING);
+          if IsAllFilesActual(_filelist) then begin
+            _mod_initially_actual:=true;
+            FZLogMgr.Get.Write('All files are in actual state', FZ_LOG_IMPORTANT_INFO);
+            FreeAndNil(_filelist);
+            DeleteCriticalSection(_dl_info.lock);
+            ChangeState(DL_STATE_DATA_LOADING_COMPLETED);
           end else begin
-            error_msg:='err_cant_start_dl_thread';
-            ChangeState(DL_STATE_TERMINAL);
+            progress.status:=FZ_ACTUALIZING_BEGIN;
+            tid:=0;
+            _th_handle:=CreateThread(nil, 0, @StartActualization, self, 0, tid);
+            if _th_handle <> 0 then begin
+              SetStatus('stage_dl_content');
+              ChangeState(DL_STATE_DATA_LOADING);
+            end else begin
+              error_msg:='err_cant_start_dl_thread';
+              ChangeState(DL_STATE_TERMINAL);
+            end;
           end;
         end else begin
           DeleteCriticalSection(_dl_info.lock);
@@ -831,7 +854,11 @@ begin
         next_state:=DL_STATE_TERMINAL;
         DumpUninstallList(_uninstall_list);
         if CreateFsgame(parent_root) and CheckAndCorrectUserltx() then begin
-          i:=Application.MessageBox(PAnsiChar(LocalizeString('msg_success_run_game')), PAnsiChar(LocalizeString('msg_congrats')), MB_YESNO or MB_ICONINFORMATION);
+          if _mod_initially_actual then begin
+            i:=Application.MessageBox(PAnsiChar(LocalizeString('msg_noactions_run_game')), PAnsiChar(LocalizeString('msg_congrats')), MB_YESNO or MB_ICONINFORMATION);
+          end else begin
+            i:=Application.MessageBox(PAnsiChar(LocalizeString('msg_success_run_game')), PAnsiChar(LocalizeString('msg_congrats')), MB_YESNO or MB_ICONINFORMATION);
+          end;
           if i = IDYES then begin
             next_state:=DL_STATE_RUN_GAME;
           end;
@@ -916,13 +943,14 @@ begin
   _download_dir:='.\';
   _master_list_path:=_download_dir+'files.list';
 
-if ParamCount = 0 then begin
+  if ParamCount = 0 then begin
     // TODO: Randomize array
     PushToArray(_master_links, 'https://raw.githubusercontent.com/gunslingermod/updater_links/master/guns.list');
   end else begin
     FZLogMgr.Get.Write('Set master link to "'+ParamStr(1)+'"', FZ_LOG_INFO);
     PushToArray(_master_links, ParamStr(1));
   end;
+  _master_url_index:=0;
 
   if (paramcount >= 2) and (trim(ParamStr(2))='true') then begin
     FZLogMgr.Get.Write('Ignoring maintenance mode', FZ_LOG_INFO);
