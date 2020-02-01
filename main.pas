@@ -13,7 +13,7 @@ uses
 type
 
   MasterListParseResult = (MASTERLIST_PARSE_OK, MASTERLIST_PARSE_ERROR, MASTERLIST_MAINTENANCE, MASTERLIST_CANTPARSE);
-  DownloaderState = (DL_STATE_INIT, DL_STATE_MASTERLIST_LOADING, DL_STATE_UPDATE_DOWNLOADER, DL_STATE_MASTERLIST_PARSE, DL_STATE_DATA_LOADING, DL_STATE_DATA_LOADING_COMPLETED, DL_STATE_RUN_GAME, DL_STATE_TERMINAL);
+  DownloaderState = (DL_STATE_INIT, DL_STATE_MASTERLIST_START_DOWNLOADING, DL_STATE_MASTERLIST_LOADING, DL_STATE_UPDATE_DOWNLOADER, DL_STATE_MASTERLIST_PARSE, DL_STATE_DATA_LOADING, DL_STATE_DATA_LOADING_COMPLETED, DL_STATE_RUN_GAME, DL_STATE_TERMINAL);
   FZMasterLinkListAddr = array of string;
 
   DownloaderUpdateParams = record
@@ -623,6 +623,7 @@ var
   parent_root:string;
   bat:string;
   md5:string;
+  retry_allowed:boolean;
 
   next_state:DownloaderState;
 begin
@@ -631,15 +632,22 @@ begin
   error_msg:='';
   error_caption:='err_caption';
   error_icon_style:=MB_ICONERROR;
+  retry_allowed:=true;
 
   case _state of
   DL_STATE_INIT:
     begin
-      SetStatus('stage_dl_masterlist');
       _mod_initially_actual:=false;
+      _master_url_index:=0;
+      self.update_progress.Position:=0;
+      ChangeState(DL_STATE_MASTERLIST_START_DOWNLOADING);
+    end;
+
+  DL_STATE_MASTERLIST_START_DOWNLOADING:
+    begin
+      SetStatus('stage_dl_masterlist');
       if not StartDownloadFileAsync(_master_links[_master_url_index], _master_list_path) then begin
         error_msg := 'err_master_start_dl';
-        ChangeState(DL_STATE_TERMINAL);
       end else begin
         ChangeState(DL_STATE_MASTERLIST_LOADING);
       end;
@@ -652,10 +660,9 @@ begin
           if length(_master_links)-1 > _master_url_index then begin
             _master_url_index:=_master_url_index+1;
             FZLogMgr.Get.Write('Switching to masterlist #: '+inttostr(_master_url_index)+': '+_master_links[_master_url_index], FZ_LOG_IMPORTANT_INFO);
-            ChangeState(DL_STATE_INIT);
+            ChangeState(DL_STATE_MASTERLIST_START_DOWNLOADING);
           end else begin
             error_msg := 'err_master_dl';
-            ChangeState(DL_STATE_TERMINAL);
           end;
         end else begin
           SetStatus('stage_parse_masterlist');
@@ -667,16 +674,16 @@ begin
 
   DL_STATE_MASTERLIST_PARSE:
     begin
+      retry_allowed:=false;
+
       if not _ignore_maintenance and IsMaintenance(_master_list_path, nil) then begin
         error_msg:='err_maintenance';
         error_caption:='err_warning';
         error_icon_style:=MB_ICONWARNING;
-        ChangeState(DL_STATE_TERMINAL);
       end else if GetDownloaderUpdateParams(_master_list_path, _downloader_update_params) and (length(_downloader_update_params.url) > 0) then begin
         SetStatus('stage_update_downloader');
         if not StartDownloadFileAsync(_downloader_update_params.url, _downloader_update_params.filename) then begin
           error_msg := 'err_updater_update_dl';
-          ChangeState(DL_STATE_TERMINAL);
         end else begin
           ChangeState(DL_STATE_UPDATE_DOWNLOADER);
         end;
@@ -693,10 +700,6 @@ begin
           master_parse_res:=ParseFileList(_master_list_path, _filelist, _ignore_maintenance, _uninstall_list);
         end;
 
-        if master_parse_res = MASTERLIST_PARSE_OK then begin
-          FilterDeletionItems(_master_list_path, _filelist);
-        end;
-
         if master_parse_res = MASTERLIST_PARSE_ERROR then begin
           error_msg:='err_invalid_masterlist';
         end else if master_parse_res = MASTERLIST_MAINTENANCE then begin
@@ -705,16 +708,19 @@ begin
           error_icon_style:=MB_ICONWARNING;
         end else if master_parse_res = MASTERLIST_CANTPARSE then begin
           error_msg:='err_masterlist_open';
-        end;
-
-        if master_parse_res = MASTERLIST_PARSE_OK then begin
+        end else if master_parse_res = MASTERLIST_PARSE_OK then begin
+          FilterDeletionItems(_master_list_path, _filelist);
           _filelist.SortBySize();
           _filelist.Dump(FZ_LOG_INFO);
           if IsAllFilesActual(_filelist) then begin
             _mod_initially_actual:=true;
             FZLogMgr.Get.Write('All files are in actual state', FZ_LOG_IMPORTANT_INFO);
+            self.update_progress.Min:=0;
+            self.update_progress.Max:=100;
+            self.update_progress.Position:=100;
             FreeAndNil(_filelist);
             DeleteCriticalSection(_dl_info.lock);
+            SetStatus('stage_finalizing');
             ChangeState(DL_STATE_DATA_LOADING_COMPLETED);
           end else begin
             progress.status:=FZ_ACTUALIZING_BEGIN;
@@ -725,13 +731,17 @@ begin
               ChangeState(DL_STATE_DATA_LOADING);
             end else begin
               error_msg:='err_cant_start_dl_thread';
-              ChangeState(DL_STATE_TERMINAL);
             end;
           end;
         end else begin
+          if length(error_msg)=0 then begin
+            error_msg:='err_invalid_masterlist';
+          end;
+        end;
+
+        if length(error_msg) > 0 then begin
           DeleteCriticalSection(_dl_info.lock);
           FreeAndNil(_filelist);
-          ChangeState(DL_STATE_TERMINAL);
         end;
       end;
 
@@ -761,10 +771,12 @@ begin
             end else begin
               CloseHandle(pi.hProcess);
               CloseHandle(pi.hThread);
+
+              // Downloader updated normally. Finish work of current instance.
+              ChangeState(DL_STATE_TERMINAL);
             end;
           end;
         end;
-        ChangeState(DL_STATE_TERMINAL);
         EndDownloadFileAsync();
       end else begin
         if _downloader_update_params.size > 0 then begin
@@ -797,7 +809,6 @@ begin
           ChangeState(DL_STATE_DATA_LOADING_COMPLETED);
         end else begin
           error_msg := 'err_dl_not_successful';
-          ChangeState(DL_STATE_TERMINAL);
         end;
       end else if progress.status = FZ_ACTUALIZING_VERIFYING then begin
         SetStatus('stage_verifying');
@@ -815,6 +826,7 @@ begin
 
   DL_STATE_DATA_LOADING_COMPLETED:
     begin
+      retry_allowed:=false;
       confirmed:=true;
       parent_root:=ExtractParentFromFsGame();
 
@@ -871,6 +883,7 @@ begin
 
   DL_STATE_RUN_GAME:
     begin
+      retry_allowed:=false;
       FillMemory(@si, sizeof(si),0);
       FillMemory(@pi, sizeof(pi),0);
       si.cb:=sizeof(si);
@@ -888,8 +901,23 @@ begin
 
   if length(error_msg) > 0 then begin
     FZLogMgr.Get.Write('Visual Error: '+error_msg, FZ_LOG_ERROR);
-    Application.MessageBox(PAnsiChar(LocalizeString(error_msg)), PAnsiChar(LocalizeString(error_caption)), MB_OK or error_icon_style);
-    Application.Terminate;
+    if retry_allowed then begin
+      error_msg:=LocalizeString(error_msg);
+      if error_msg[length(error_msg)] <> '.' then begin
+        error_msg:=error_msg+'.';
+      end;
+      error_msg:=error_msg+' '+LocalizeString('retry_question');
+      i:=Application.MessageBox(PAnsiChar(LocalizeString(error_msg)), PAnsiChar(LocalizeString(error_caption)), MB_YESNO or error_icon_style);
+      if i = IDYES then begin
+        FZLogMgr.Get.Write('Retry selected', FZ_LOG_IMPORTANT_INFO);
+        ChangeState(DL_STATE_INIT);
+      end else begin
+        ChangeState(DL_STATE_TERMINAL);
+      end;
+    end else begin
+      Application.MessageBox(PAnsiChar(LocalizeString(error_msg)), PAnsiChar(LocalizeString(error_caption)), MB_OK or error_icon_style);
+      ChangeState(DL_STATE_TERMINAL);
+    end;
   end;
 
   timer1.Enabled:=true;
@@ -950,7 +978,6 @@ begin
     FZLogMgr.Get.Write('Set master link to "'+ParamStr(1)+'"', FZ_LOG_INFO);
     PushToArray(_master_links, ParamStr(1));
   end;
-  _master_url_index:=0;
 
   if (paramcount >= 2) and (trim(ParamStr(2))='true') then begin
     FZLogMgr.Get.Write('Ignoring maintenance mode', FZ_LOG_INFO);

@@ -34,13 +34,13 @@ begin
   end else if str = 'stage_exiting' then begin
     if locale = RUS_ID then result:='Завершение работы загрузчика.' else result:='Exiting updater.';
   end else if str = 'err_master_start_dl' then begin
-    if locale = RUS_ID then result:='Не удалось начать загрузку мастер-списка!' else result:='Can''t start master-list download!';
+    if locale = RUS_ID then result:='Не удалось начать загрузку мастер-списка.' else result:='Can''t start master-list download.';
   end else if str = 'err_master_dl'  then begin
-    if locale = RUS_ID then result:='Не удалось загрузить мастер-список!' else result:='Error while downloading master-list!';
+    if locale = RUS_ID then result:='Не удалось загрузить мастер-список.' else result:='Error while downloading master-list.';
   end else if str = 'err_maintenance' then begin
-    if locale = RUS_ID then result:='Ведутся технические работы. Пожалуйста, попробуйте позже' else result:='Maintenance is in progress, please try again later';
+    if locale = RUS_ID then result:='Ведутся технические работы. Пожалуйста, попробуйте позже.' else result:='Maintenance is in progress, please try again later';
   end else if str = 'err_updater_update_dl' then begin
-    if locale = RUS_ID then result:='Не удалось скачать обновление для загрузчика!' else result:='Can''t download update for downloader!';
+    if locale = RUS_ID then result:='Не удалось скачать обновление загрузчика.' else result:='Can''t download update for downloader.';
   end else if str = 'err_invalid_masterlist' then begin
     if locale = RUS_ID then result:='Содержимое мастер-списка повреждено' else result:='Invalid masterlist content';
   end else if str = 'err_masterlist_open' then begin
@@ -48,13 +48,13 @@ begin
   end else if str = 'err_cant_start_dl_thread' then begin
     if locale = RUS_ID then result:='Не удалось начать загрузку' else result:='Problems while creating downloader thread';
   end else if str = 'err_integrity_check_failure' then begin
-    if locale = RUS_ID then result:='Нарушена целостность скачанных файлов, попробуйте начать заново' else result:='Checking update integrity failed, please try again';
+    if locale = RUS_ID then result:='Нарушена целостность скачанных файлов' else result:='Checking update integrity failed.';
   end else if str = 'err_bat_copy_fail' then begin
     if locale = RUS_ID then result:='Не удалось записать BAT-файл для обновления, проверьте настройки антивируса или скопируйте файл с обновлением вручную' else result:='Can''t write BAT file, please check anti-virus settings or copy the update manually';
   end else if str = 'err_cant_run_update' then begin
     if locale = RUS_ID then result:='Не удалось запустить обновление, проверьте настройки антивируса или запустите обновление вручную' else result:='Can''t run update, please check anti-virus settings or copy the update manually';
   end else if str = 'err_dl_not_successful' then begin
-    if locale = RUS_ID then result:='Загрузка не удалась, попробуйте снова' else result:='Downloading is not successful, please try again';
+    if locale = RUS_ID then result:='Загрузка не удалась.' else result:='Downloading is not successful.';
   end else if str = 'err_cant_update_configs' then begin
     if locale = RUS_ID then result:='Не удалось обновить конфигурационные файлы мода' else result:='Can''t update configs';
   end else if str = 'err_caption' then begin
@@ -74,9 +74,12 @@ begin
   end else if str ='msg_cancel_install' then begin
     if locale = RUS_ID then result:='Прекратить установку?' else result:='Stop updating?';
   end else if str ='msg_success_run_game'  then begin
-    if locale = RUS_ID then result:='Мод был успешно обновлен. Желаете сыграть прямо сейчас?' else result:='The mod has been successfully updated! Do you want to run the game?';
+    if locale = RUS_ID then result:='Мод был успешно обновлен. Желаете сыграть прямо сейчас?' else result:='The mod has been successfully updated. Do you want to run the game?';
   end else if str ='msg_noactions_run_game'  then begin
     if locale = RUS_ID then result:='Версия мода актуальна, обновление не требуется. Желаете сыграть прямо сейчас?' else result:='The mod is in actual state, update is not needed. Do you want to run the game?';
+  end else if str ='retry_question'  then begin
+      if locale = RUS_ID then result:='Попробовать еще раз?' else result:='Retry?';
+
 {  end else if str =  then begin
     if locale = RUS_ID then result:= else result:=;
 }  end;
