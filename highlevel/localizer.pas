@@ -5,6 +5,7 @@ unit Localizer;
 interface
 
 function LocalizeString(str:string):string;
+function SelectLocalized(rus:string; eng:string):string;
 
 implementation
 uses windows;
@@ -78,12 +79,28 @@ begin
   end else if str ='msg_noactions_run_game'  then begin
     if locale = RUS_ID then result:='Версия мода актуальна, обновление не требуется. Желаете сыграть прямо сейчас?' else result:='The mod is in actual state, update is not needed. Do you want to run the game?';
   end else if str ='retry_question'  then begin
-      if locale = RUS_ID then result:='Попробовать еще раз?' else result:='Retry?';
+    if locale = RUS_ID then result:='Попробовать еще раз?' else result:='Retry?';
+  end else if str ='next' then begin
+    result:=SelectLocalized('Далее', 'Next');
 
 {  end else if str =  then begin
     if locale = RUS_ID then result:= else result:=;
 }  end;
 
+end;
+
+function SelectLocalized(rus: string; eng: string): string;
+var
+  locale:cardinal;
+const
+  RUS_ID:cardinal=1049;
+begin
+  locale:=GetSystemDefaultLangID();
+  if locale = RUS_ID then begin
+    result:=rus;
+  end else begin
+    result:=eng;
+  end;
 end;
 
 end.

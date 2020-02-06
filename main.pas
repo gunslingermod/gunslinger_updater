@@ -6,14 +6,14 @@ interface
 
 uses
   Classes, SysUtils, FileUtil, Forms, Controls, Graphics, Dialogs, ComCtrls,
-  StdCtrls, ExtCtrls,
+  StdCtrls, ExtCtrls, CheckLst,
 
   HttpDownloader, FileManager, Windows, LazUTF8, Localizer;
 
 type
 
   MasterListParseResult = (MASTERLIST_PARSE_OK, MASTERLIST_PARSE_ERROR, MASTERLIST_MAINTENANCE, MASTERLIST_CANTPARSE);
-  DownloaderState = (DL_STATE_INIT, DL_STATE_MASTERLIST_START_DOWNLOADING, DL_STATE_MASTERLIST_LOADING, DL_STATE_UPDATE_DOWNLOADER, DL_STATE_MASTERLIST_PARSE, DL_STATE_DATA_LOADING, DL_STATE_DATA_LOADING_COMPLETED, DL_STATE_RUN_GAME, DL_STATE_TERMINAL);
+  DownloaderState = (DL_STATE_INIT, DL_STATE_MASTERLIST_START_DOWNLOADING, DL_STATE_MASTERLIST_LOADING, DL_STATE_UPDATE_DOWNLOADER, DL_STATE_MASTERLIST_PREPARSE, DL_STATE_SELECT_CONFIG, DL_STATE_MASTERLIST_FILESPARSE, DL_STATE_DATA_LOADING, DL_STATE_DATA_LOADING_COMPLETED, DL_STATE_RUN_GAME, DL_STATE_TERMINAL);
   FZMasterLinkListAddr = array of string;
 
   DownloaderUpdateParams = record
@@ -29,14 +29,26 @@ type
   end;
   pCurrentDownloadInfo = ^CurrentDownloadInfo;
 
+  DownloadOption = record
+    key:string;
+    enabled:boolean;
+    name_ru:string;
+    name_en:string;
+  end;
+
+  DownloadOptionsList = array of DownloadOption;
+
   { TForm1 }
 
   TForm1 = class(TForm)
+    btn_next: TButton;
+    options_list: TCheckListBox;
     Image1: TImage;
     SelectDirectoryDialog1: TSelectDirectoryDialog;
     Timer1: TTimer;
     update_status: TLabel;
     update_progress: TProgressBar;
+    procedure btn_nextClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure Timer1Timer(Sender: TObject);
 
@@ -54,6 +66,7 @@ type
     _dl_info:CurrentDownloadInfo;
     _ignore_maintenance:boolean;
     _uninstall_list:string;
+    _options: DownloadOptionsList;
 
     _dlThread:FZDownloaderThread;
     _dl:FZFileDownloader;
@@ -68,9 +81,12 @@ type
 var
   Form1: TForm1;
 
+const
+  OPTIONS_CONFIG_NAME:string = 'update_configuration.ini';
+
 implementation
 {$R *.lfm}
-uses LogMgr, FastMd5, IniFile, Registry, userltxdumper;
+uses LogMgr, FastMd5, IniFile, Registry, userltxdumper, IniFiles;
 
 // We need to use 'Native' WinApi functions to avoid problems with conversion of codepages
 // The functions return results using current locale codepeages
@@ -220,10 +236,125 @@ begin
   end;
 end;
 
-function ParseFileList(list_name:string; filelist:FZFiles; ignore_maintenance:boolean; var items_to_install:string):MasterListParseResult;
+function ParseInstallationOptions(list_name:string; var options:DownloadOptionsList):boolean;
 var
   cfg:FZIniFile;
-  section, filename, fileurl:string;
+  options_cfg:TIniFile;
+  options_count, i:integer;
+  section:string;
+begin
+  result:=false;
+
+  cfg:=FZIniFile.Create(UTF8ToWinCP(list_name));
+  options_cfg:=TIniFile.Create(OPTIONS_CONFIG_NAME);
+  try
+    options_count:=cfg.GetIntDef('main', 'options_count', 0);
+    FZLogMgr.Get.Write('Master list declares '+inttostr(options_count)+' installation options', FZ_LOG_IMPORTANT_INFO);
+
+    if options_count = 0 then begin
+      result:=true;
+      exit;
+    end;
+
+    setlength(options, options_count);
+
+    for i:=0 to options_count-1 do begin
+      section:='option_'+inttostr(i);
+      FZLogMgr.Get.Write('Parsing options section '+section, FZ_LOG_INFO);
+      options[i].key:=cfg.GetStringDef(section, 'key', '' );
+
+      if (length(options[i].key)=0) then begin
+        FZLogMgr.Get.Write('Invalid key for option #'+inttostr(i), FZ_LOG_ERROR);
+        exit;
+      end;
+
+      options[i].name_en:=cfg.GetStringDef(section, 'name_en', '' );
+      options[i].name_ru:=cfg.GetStringDef(section, 'name_ru', '' );
+
+      if (length(options[i].name_en)>0) and (length(options[i].name_ru) = 0) then begin
+        options[i].name_ru:=options[i].name_en;
+      end else if (length(options[i].name_ru)>0) and (length(options[i].name_en) = 0) then begin
+        options[i].name_en:=options[i].name_ru;
+      end else if (length(options[i].name_en) = 0) and (length(options[i].name_ru) = 0) then begin
+        options[i].name_ru := options[i].key;
+        options[i].name_en := options[i].key;
+      end;
+
+      options[i].enabled:=strtointdef(options_cfg.ReadString('main', options[i].key, '0'), 0) <> 0;
+    end;
+    FZLogMgr.Get.Write('Option '+inttostr(i)+' is '+options[i].key+' ('+options[i].name_ru+' | '+options[i].name_en, FZ_LOG_IMPORTANT_INFO);
+
+    result:=true;
+  finally
+    if not result then begin
+      setlength(options, 0);
+    end;
+
+    cfg.Free();
+    options_cfg.Free();
+  end;
+end;
+
+procedure SaveInstallationOptions(options:DownloadOptionsList);
+var
+  options_cfg:TIniFile;
+  i:integer;
+  val:string;
+begin
+  options_cfg:=TIniFile.Create(OPTIONS_CONFIG_NAME);
+  try
+    for i:=0 to length(options)-1 do begin
+      if options[i].enabled then begin
+        val:='1';
+      end else begin
+        val:='0';
+      end;
+      options_cfg.WriteString('main', options[i].key, val);
+    end;
+
+  finally
+    options_cfg.Free();
+  end;
+end;
+
+function CheckFileConditionString(condstr:string; options:DownloadOptionsList):boolean;
+var
+  inverse:boolean;
+  i:integer;
+  opt_found:boolean;
+begin
+  result:=true;
+  if length(condstr) = 0 then exit;
+
+  if condstr[1]='!' then begin
+    inverse:=true;
+    condstr:=trim(rightstr(condstr, length(condstr)-1));
+  end else begin
+    inverse:=false;
+  end;
+  if length(condstr) = 0 then exit;
+
+  opt_found:=false;
+  for i:=0 to length(options)-1 do begin
+    if options[i].key = condstr then begin
+      opt_found:=true;
+      result:=options[i].enabled;
+      break;
+    end;
+  end;
+
+  if not opt_found then begin
+    result:=inverse;
+  end else if inverse then begin
+    result:=not result;
+  end;
+end;
+
+function ParseFileList(list_name:string; filelist:FZFiles; ignore_maintenance:boolean; var items_to_install:string; options:DownloadOptionsList):MasterListParseResult;
+var
+  cfg:FZIniFile;
+  section, filename, fileurl, condstr:string;
+  meet_condition:boolean;
   files_count, i, compression:integer;
   fileCheckParams:FZCheckParams;
 begin
@@ -254,7 +385,19 @@ begin
         exit;
       end;
 
-      if cfg.GetBoolDef(section,'delete', false) then begin
+      condstr:=cfg.GetStringDef(section, 'condition', '');
+      if length(condstr) > 0 then begin
+        meet_condition:=CheckFileConditionString(condstr, options);
+        if meet_condition then begin
+          FZLogMgr.Get.Write('File #'+inttostr(i)+' ('+filename+') meets condition '+condstr, FZ_LOG_IMPORTANT_INFO);
+        end else begin
+          FZLogMgr.Get.Write('File #'+inttostr(i)+' ('+filename+') doesn''t meet condition '+condstr, FZ_LOG_IMPORTANT_INFO);
+        end;
+      end else begin
+        meet_condition:=true;
+      end;
+
+      if cfg.GetBoolDef(section,'delete', false) or not meet_condition then begin
         // The file will be processed later while checking the list
         FZLogMgr.Get.Write('File #'+inttostr(i)+' ('+filename+') needs removing', FZ_LOG_INFO);
       end else if cfg.GetBoolDef(section,'ignore', false) then begin
@@ -304,13 +447,14 @@ begin
   end;
 end;
 
-procedure FilterDeletionItems(list_name:string; filelist:FZFiles);
+procedure FilterDeletionItems(list_name:string; filelist:FZFiles; options:DownloadOptionsList);
 var
   cfg:FZIniFile;
   i, j:integer;
   section, filename, itmname:string;
   itm_data:FZFileItemData;
   delflag:boolean;
+  condstr:string;
 begin
   cfg:=FZIniFile.Create(UTF8ToWinCP(list_name));
   try
@@ -326,7 +470,8 @@ begin
           filename:=stringreplace(cfg.GetStringDef(section, 'path', '' ), '/', '\',[rfReplaceAll]);
           itmname:=stringreplace(itm_data.name, '/', '\', [rfReplaceAll]);
           if filename=itmname then begin
-            delflag:=cfg.GetBoolDef(section,'delete', false);
+            condstr:=cfg.GetStringDef(section, 'condition', '');
+            delflag:=cfg.GetBoolDef(section,'delete', false) or not CheckFileConditionString(condstr, options);
             break;
           end;
         end;
@@ -640,6 +785,7 @@ begin
       _mod_initially_actual:=false;
       _master_url_index:=0;
       self.update_progress.Position:=0;
+      setlength(_options, 0);
       ChangeState(DL_STATE_MASTERLIST_START_DOWNLOADING);
     end;
 
@@ -666,13 +812,13 @@ begin
           end;
         end else begin
           SetStatus('stage_parse_masterlist');
-          ChangeState(DL_STATE_MASTERLIST_PARSE);
+          ChangeState(DL_STATE_MASTERLIST_PREPARSE);
         end;
         EndDownloadFileAsync();
       end;
     end;
 
-  DL_STATE_MASTERLIST_PARSE:
+  DL_STATE_MASTERLIST_PREPARSE:
     begin
       retry_allowed:=false;
 
@@ -688,64 +834,25 @@ begin
           ChangeState(DL_STATE_UPDATE_DOWNLOADER);
         end;
       end else begin
-        master_parse_res := MASTERLIST_PARSE_ERROR;
-
-        _filelist:=FZFiles.Create();
-        _filelist.SetDlMode(FZ_DL_MODE_CURL);
-        InitializeCriticalSection(_dl_info.lock);
-        _filelist.SetCallback(@DownloadCallback, @_dl_info);
-        FZLogMgr.Get.Write('Scanning path "'+_download_dir+'"', FZ_LOG_INFO);
-        if _filelist.ScanPath(_download_dir) then begin
-          FZLogMgr.Get.Write('Parsing master list "'+_master_list_path+'"', FZ_LOG_INFO);
-          master_parse_res:=ParseFileList(_master_list_path, _filelist, _ignore_maintenance, _uninstall_list);
-        end;
-
-        if master_parse_res = MASTERLIST_PARSE_ERROR then begin
-          error_msg:='err_invalid_masterlist';
-        end else if master_parse_res = MASTERLIST_MAINTENANCE then begin
-          error_msg:='err_maintenance';
-          error_caption:='err_warning';
-          error_icon_style:=MB_ICONWARNING;
-        end else if master_parse_res = MASTERLIST_CANTPARSE then begin
-          error_msg:='err_masterlist_open';
-        end else if master_parse_res = MASTERLIST_PARSE_OK then begin
-          FilterDeletionItems(_master_list_path, _filelist);
-          _filelist.SortBySize();
-          _filelist.Dump(FZ_LOG_INFO);
-          if IsAllFilesActual(_filelist) then begin
-            _mod_initially_actual:=true;
-            FZLogMgr.Get.Write('All files are in actual state', FZ_LOG_IMPORTANT_INFO);
-            self.update_progress.Min:=0;
-            self.update_progress.Max:=100;
-            self.update_progress.Position:=100;
-            FreeAndNil(_filelist);
-            DeleteCriticalSection(_dl_info.lock);
-            SetStatus('stage_finalizing');
-            ChangeState(DL_STATE_DATA_LOADING_COMPLETED);
-          end else begin
-            progress.status:=FZ_ACTUALIZING_BEGIN;
-            tid:=0;
-            _th_handle:=CreateThread(nil, 0, @StartActualization, self, 0, tid);
-            if _th_handle <> 0 then begin
-              SetStatus('stage_dl_content');
-              ChangeState(DL_STATE_DATA_LOADING);
-            end else begin
-              error_msg:='err_cant_start_dl_thread';
+        //Пробуем распарсить все доступные опции
+        if ParseInstallationOptions(_master_list_path, _options) then begin
+          //Рисуем на форме доступные опции
+          if length(_options) > 0 then begin
+            self.options_list.Items.Clear();
+            for i:=0 to length(_options)-1 do begin
+              self.options_list.AddItem(SelectLocalized(_options[i].name_ru, _options[i].name_en), nil);
+              self.options_list.Checked[i]:=_options[i].enabled;
             end;
-          end;
-        end else begin
-          if length(error_msg)=0 then begin
-            error_msg:='err_invalid_masterlist';
-          end;
-        end;
 
-        if length(error_msg) > 0 then begin
-          DeleteCriticalSection(_dl_info.lock);
-          FreeAndNil(_filelist);
+            self.options_list.Visible:=true;
+            self.btn_next.Visible:=true;
+          end;
+
+          ChangeState(DL_STATE_SELECT_CONFIG);
+        end else begin
+          error_msg:='err_invalid_masterlist';
         end;
       end;
-
-      DeleteFile(PAnsiChar(UTF8ToWinCP(_master_list_path)));
     end;
 
   DL_STATE_UPDATE_DOWNLOADER:
@@ -787,6 +894,81 @@ begin
           update_progress.Visible:=false;
         end;
       end;
+    end;
+
+  DL_STATE_SELECT_CONFIG:
+    begin
+      retry_allowed:=false;
+      if not self.options_list.Visible and not self.btn_next.Visible then begin
+        for i:=0 to length(_options)-1 do begin
+          _options[i].enabled:=self.options_list.Checked[i];
+        end;
+        SaveInstallationOptions(_options);
+        ChangeState(DL_STATE_MASTERLIST_FILESPARSE)
+      end;
+    end;
+
+  DL_STATE_MASTERLIST_FILESPARSE:
+    begin
+      retry_allowed:=false;
+
+      master_parse_res := MASTERLIST_PARSE_ERROR;
+
+      _filelist:=FZFiles.Create();
+      _filelist.SetDlMode(FZ_DL_MODE_CURL);
+      InitializeCriticalSection(_dl_info.lock);
+      _filelist.SetCallback(@DownloadCallback, @_dl_info);
+      FZLogMgr.Get.Write('Scanning path "'+_download_dir+'"', FZ_LOG_INFO);
+      if _filelist.ScanPath(_download_dir) then begin
+        FZLogMgr.Get.Write('Parsing master list "'+_master_list_path+'"', FZ_LOG_INFO);
+        master_parse_res:=ParseFileList(_master_list_path, _filelist, _ignore_maintenance, _uninstall_list, _options);
+      end;
+
+      if master_parse_res = MASTERLIST_PARSE_ERROR then begin
+        error_msg:='err_invalid_masterlist';
+      end else if master_parse_res = MASTERLIST_MAINTENANCE then begin
+        error_msg:='err_maintenance';
+        error_caption:='err_warning';
+        error_icon_style:=MB_ICONWARNING;
+      end else if master_parse_res = MASTERLIST_CANTPARSE then begin
+        error_msg:='err_masterlist_open';
+      end else if master_parse_res = MASTERLIST_PARSE_OK then begin
+        FilterDeletionItems(_master_list_path, _filelist, _options);
+        _filelist.SortBySize();
+        _filelist.Dump(FZ_LOG_INFO);
+        if IsAllFilesActual(_filelist) then begin
+          _mod_initially_actual:=true;
+          FZLogMgr.Get.Write('All files are in actual state', FZ_LOG_IMPORTANT_INFO);
+          self.update_progress.Min:=0;
+          self.update_progress.Max:=100;
+          self.update_progress.Position:=100;
+          FreeAndNil(_filelist);
+          DeleteCriticalSection(_dl_info.lock);
+          SetStatus('stage_finalizing');
+          ChangeState(DL_STATE_DATA_LOADING_COMPLETED);
+        end else begin
+          progress.status:=FZ_ACTUALIZING_BEGIN;
+          tid:=0;
+          _th_handle:=CreateThread(nil, 0, @StartActualization, self, 0, tid);
+          if _th_handle <> 0 then begin
+            SetStatus('stage_dl_content');
+            ChangeState(DL_STATE_DATA_LOADING);
+          end else begin
+            error_msg:='err_cant_start_dl_thread';
+          end;
+        end;
+      end else begin
+        if length(error_msg)=0 then begin
+          error_msg:='err_invalid_masterlist';
+        end;
+      end;
+
+      if length(error_msg) > 0 then begin
+        DeleteCriticalSection(_dl_info.lock);
+        FreeAndNil(_filelist);
+      end;
+
+      DeleteFile(PAnsiChar(UTF8ToWinCP(_master_list_path)));
     end;
 
   DL_STATE_DATA_LOADING:
@@ -962,6 +1144,18 @@ begin
   self.update_status.Top:=self.Height-self.update_progress.Height-border_size-self.update_status.Height-between_label_and_progress;
   self.update_status.Caption:='';
 
+  self.options_list.Left:=self.update_progress.Left;
+  self.options_list.Width:=self.update_progress.Width;
+  self.options_list.Top:=30;
+  self.options_list.Height:=self.update_progress.Top - self.options_list.Top - 60;
+  self.options_list.Visible:=false;
+
+  self.btn_next.Caption:=LocalizeString('next');
+  self.btn_next.Width:=80;
+  self.btn_next.Left:= (self.Width-btn_next.Width) div 2;
+  self.btn_next.Top:=options_list.Top+self.options_list.Height+10;
+  self.btn_next.Visible:=false;
+
   _downloader_update_params.filename:=GetExecutableName()+update_suffix;
 
   if FileExists(_downloader_update_params.filename) then begin
@@ -988,6 +1182,12 @@ begin
 
   ChangeState(DL_STATE_INIT);
   Timer1.Enabled:=true;
+end;
+
+procedure TForm1.btn_nextClick(Sender: TObject);
+begin
+  self.btn_next.Visible:=false;
+  self.options_list.Visible:=false;
 end;
 
 end.
