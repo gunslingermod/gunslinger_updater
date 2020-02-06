@@ -280,7 +280,7 @@ begin
         options[i].name_en := options[i].key;
       end;
 
-      options[i].enabled:=strtointdef(options_cfg.ReadString('main', options[i].key, '0'), 0) <> 0;
+      options[i].enabled:=strtointdef(options_cfg.ReadString('options', options[i].key, '0'), 0) <> 0;
     end;
     FZLogMgr.Get.Write('Option '+inttostr(i)+' is '+options[i].key+' ('+options[i].name_ru+' | '+options[i].name_en, FZ_LOG_IMPORTANT_INFO);
 
@@ -309,13 +309,51 @@ begin
       end else begin
         val:='0';
       end;
-      options_cfg.WriteString('main', options[i].key, val);
+      options_cfg.WriteString('options', options[i].key, val);
     end;
 
   finally
     options_cfg.Free();
   end;
 end;
+
+procedure MarkInstallationAsValid(valid:boolean);
+var
+  options_cfg:TIniFile;
+  val:string;
+begin
+  options_cfg:=TIniFile.Create(OPTIONS_CONFIG_NAME);
+  try
+    if valid then begin
+      val:='1';
+    end else begin
+      val:='0';
+    end;
+    options_cfg.WriteString('main', 'installation_valid', val);
+  finally
+    options_cfg.Free();
+  end;
+end;
+
+procedure SaveLastUpdateTime(time:TDateTime; updates_present:boolean);
+var
+  options_cfg:TIniFile;
+  val:string;
+begin
+  options_cfg:=TIniFile.Create(OPTIONS_CONFIG_NAME);
+  try
+    if updates_present then begin
+      val:='1';
+    end else begin
+      val:='0';
+    end;
+    options_cfg.WriteString('main', 'updates_present', val);
+    options_cfg.WriteString('main', 'last_update_check', DateTimeToStr(time));
+  finally
+    options_cfg.Free();
+  end;
+end;
+
 
 function CheckFileConditionString(condstr:string; options:DownloadOptionsList):boolean;
 var
@@ -478,9 +516,9 @@ begin
 
         if not delflag then begin
           filelist.DeleteEntry(i);
-          FZLogMgr.Get.Write('Skipping file #'+inttostr(i)+' ('+itm_data.name+')', FZ_LOG_ERROR);
+          FZLogMgr.Get.Write('Skipping file #'+inttostr(i)+' ('+itm_data.name+')', FZ_LOG_IMPORTANT_INFO);
         end else begin
-          FZLogMgr.Get.Write('Leave file #'+inttostr(i)+' ('+itm_data.name+') in the list for removing', FZ_LOG_ERROR);
+          FZLogMgr.Get.Write('Leave file #'+inttostr(i)+' ('+itm_data.name+') in the list for removing', FZ_LOG_IMPORTANT_INFO);
         end;
 
       end;
@@ -903,7 +941,6 @@ begin
         for i:=0 to length(_options)-1 do begin
           _options[i].enabled:=self.options_list.Checked[i];
         end;
-        SaveInstallationOptions(_options);
         ChangeState(DL_STATE_MASTERLIST_FILESPARSE)
       end;
     end;
@@ -933,6 +970,8 @@ begin
       end else if master_parse_res = MASTERLIST_CANTPARSE then begin
         error_msg:='err_masterlist_open';
       end else if master_parse_res = MASTERLIST_PARSE_OK then begin
+        MarkInstallationAsValid(false);
+        SaveInstallationOptions(_options);
         FilterDeletionItems(_master_list_path, _filelist, _options);
         _filelist.SortBySize();
         _filelist.Dump(FZ_LOG_INFO);
@@ -1048,6 +1087,8 @@ begin
         next_state:=DL_STATE_TERMINAL;
         DumpUninstallList(_uninstall_list);
         if CreateFsgame(parent_root) and CheckAndCorrectUserltx() then begin
+          MarkInstallationAsValid(true);
+          SaveLastUpdateTime(Now(), false);
           if _mod_initially_actual then begin
             i:=Application.MessageBox(PAnsiChar(LocalizeString('msg_noactions_run_game')), PAnsiChar(LocalizeString('msg_congrats')), MB_YESNO or MB_ICONINFORMATION);
           end else begin
