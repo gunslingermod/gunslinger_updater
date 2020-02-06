@@ -50,6 +50,7 @@ type
     update_progress: TProgressBar;
     procedure btn_nextClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
+    procedure FormShow(Sender: TObject);
     procedure Timer1Timer(Sender: TObject);
 
     procedure SetStatus(status:string);
@@ -73,6 +74,7 @@ type
     _th_handle:THandle;
     _filelist:FZFiles;
     _mod_initially_actual:boolean;
+    _silent_mode:boolean;
 
   public
 
@@ -282,7 +284,7 @@ begin
 
       options[i].enabled:=strtointdef(options_cfg.ReadString('options', options[i].key, '0'), 0) <> 0;
     end;
-    FZLogMgr.Get.Write('Option '+inttostr(i)+' is '+options[i].key+' ('+options[i].name_ru+' | '+options[i].name_en, FZ_LOG_IMPORTANT_INFO);
+    FZLogMgr.Get.Write('Option '+inttostr(i)+' is '+options[i].key+' ('+options[i].name_ru+' | '+options[i].name_en+')', FZ_LOG_IMPORTANT_INFO);
 
     result:=true;
   finally
@@ -535,6 +537,7 @@ begin
   result:=true;
   for i:=0 to filelist.EntriesCount()-1 do begin
     if (filelist.GetEntry(i).required_action <> FZ_FILE_ACTION_NO) and (filelist.GetEntry(i).required_action<>FZ_FILE_ACTION_IGNORE) then begin
+      FZLogMgr.Get.Write('File "'+ filelist.GetEntry(i).name+'" NOT in actual state ('+inttostr(integer(filelist.GetEntry(i).required_action))+')', FZ_LOG_INFO);
       result:=false;
       break;
     end;
@@ -807,6 +810,7 @@ var
   bat:string;
   md5:string;
   retry_allowed:boolean;
+  need_update:boolean;
 
   next_state:DownloaderState;
 begin
@@ -815,7 +819,7 @@ begin
   error_msg:='';
   error_caption:='err_caption';
   error_icon_style:=MB_ICONERROR;
-  retry_allowed:=true;
+  retry_allowed:=not _silent_mode;
 
   case _state of
   DL_STATE_INIT:
@@ -824,6 +828,12 @@ begin
       _master_url_index:=0;
       self.update_progress.Position:=0;
       setlength(_options, 0);
+
+      if _silent_mode then begin
+        // To prevent start multiple updater instances in background
+        SaveLastUpdateTime(Now(), false);
+      end;
+
       ChangeState(DL_STATE_MASTERLIST_START_DOWNLOADING);
     end;
 
@@ -866,7 +876,11 @@ begin
         error_icon_style:=MB_ICONWARNING;
       end else if GetDownloaderUpdateParams(_master_list_path, _downloader_update_params) and (length(_downloader_update_params.url) > 0) then begin
         SetStatus('stage_update_downloader');
-        if not StartDownloadFileAsync(_downloader_update_params.url, _downloader_update_params.filename) then begin
+        if _silent_mode then begin
+          FZLogMgr.Get.Write('Downloader needs update', FZ_LOG_INFO);
+          SaveLastUpdateTime(Now(), true);
+          ChangeState(DL_STATE_TERMINAL);
+        end else if not StartDownloadFileAsync(_downloader_update_params.url, _downloader_update_params.filename) then begin
           error_msg := 'err_updater_update_dl';
         end else begin
           ChangeState(DL_STATE_UPDATE_DOWNLOADER);
@@ -882,8 +896,10 @@ begin
               self.options_list.Checked[i]:=_options[i].enabled;
             end;
 
-            self.options_list.Visible:=true;
-            self.btn_next.Visible:=true;
+            if not _silent_mode then begin
+              self.options_list.Visible:=true;
+              self.btn_next.Visible:=true;
+            end;
           end;
 
           ChangeState(DL_STATE_SELECT_CONFIG);
@@ -940,6 +956,7 @@ begin
       if not self.options_list.Visible and not self.btn_next.Visible then begin
         for i:=0 to length(_options)-1 do begin
           _options[i].enabled:=self.options_list.Checked[i];
+          FZLogMgr.Get.Write('Option "'+_options[i].key+'" status is "'+booltostr(_options[i].enabled, true)+'"', FZ_LOG_INFO);
         end;
         ChangeState(DL_STATE_MASTERLIST_FILESPARSE)
       end;
@@ -970,30 +987,40 @@ begin
       end else if master_parse_res = MASTERLIST_CANTPARSE then begin
         error_msg:='err_masterlist_open';
       end else if master_parse_res = MASTERLIST_PARSE_OK then begin
-        MarkInstallationAsValid(false);
-        SaveInstallationOptions(_options);
-        FilterDeletionItems(_master_list_path, _filelist, _options);
-        _filelist.SortBySize();
-        _filelist.Dump(FZ_LOG_INFO);
-        if IsAllFilesActual(_filelist) then begin
-          _mod_initially_actual:=true;
-          FZLogMgr.Get.Write('All files are in actual state', FZ_LOG_IMPORTANT_INFO);
-          self.update_progress.Min:=0;
-          self.update_progress.Max:=100;
-          self.update_progress.Position:=100;
-          FreeAndNil(_filelist);
-          DeleteCriticalSection(_dl_info.lock);
-          SetStatus('stage_finalizing');
-          ChangeState(DL_STATE_DATA_LOADING_COMPLETED);
+        if _silent_mode then begin
+          FilterDeletionItems(_master_list_path, _filelist, _options);
+          _filelist.SortBySize();
+          _filelist.Dump(FZ_LOG_INFO);
+          need_update:=not IsAllFilesActual(_filelist);
+          SaveLastUpdateTime(Now(), need_update);
+          FZLogMgr.Get.Write('Need update: '+booltostr(need_update, true), FZ_LOG_IMPORTANT_INFO);
+          ChangeState(DL_STATE_TERMINAL);
         end else begin
-          progress.status:=FZ_ACTUALIZING_BEGIN;
-          tid:=0;
-          _th_handle:=CreateThread(nil, 0, @StartActualization, self, 0, tid);
-          if _th_handle <> 0 then begin
-            SetStatus('stage_dl_content');
-            ChangeState(DL_STATE_DATA_LOADING);
+          MarkInstallationAsValid(false);
+          SaveInstallationOptions(_options);
+          FilterDeletionItems(_master_list_path, _filelist, _options);
+          _filelist.SortBySize();
+          _filelist.Dump(FZ_LOG_INFO);
+          if IsAllFilesActual(_filelist) then begin
+            _mod_initially_actual:=true;
+            FZLogMgr.Get.Write('All files are in actual state', FZ_LOG_IMPORTANT_INFO);
+            self.update_progress.Min:=0;
+            self.update_progress.Max:=100;
+            self.update_progress.Position:=100;
+            FreeAndNil(_filelist);
+            DeleteCriticalSection(_dl_info.lock);
+            SetStatus('stage_finalizing');
+            ChangeState(DL_STATE_DATA_LOADING_COMPLETED);
           end else begin
-            error_msg:='err_cant_start_dl_thread';
+            progress.status:=FZ_ACTUALIZING_BEGIN;
+            tid:=0;
+            _th_handle:=CreateThread(nil, 0, @StartActualization, self, 0, tid);
+            if _th_handle <> 0 then begin
+              SetStatus('stage_dl_content');
+              ChangeState(DL_STATE_DATA_LOADING);
+            end else begin
+              error_msg:='err_cant_start_dl_thread';
+            end;
           end;
         end;
       end else begin
@@ -1124,7 +1151,9 @@ begin
 
   if length(error_msg) > 0 then begin
     FZLogMgr.Get.Write('Visual Error: '+error_msg, FZ_LOG_ERROR);
-    if retry_allowed then begin
+    if _silent_mode then begin
+      ChangeState(DL_STATE_TERMINAL);
+    end else if retry_allowed then begin
       error_msg:=LocalizeString(error_msg);
       if error_msg[length(error_msg)] <> '.' then begin
         error_msg:=error_msg+'.';
@@ -1164,6 +1193,7 @@ const
   update_suffix:string = '.upd.exe';
   border_size:integer = 10;
   between_label_and_progress:integer=2;
+  MAIN_MASTER_LINK:string = 'https://raw.githubusercontent.com/gunslingermod/updater_links/master/guns.list';
 begin
   self.Caption:=self.Caption+' (Build ' + {$INCLUDE %DATE} + ')';
   FZLogMgr.Get.Write(self.Caption, FZ_LOG_IMPORTANT_INFO);
@@ -1208,7 +1238,11 @@ begin
 
   if ParamCount = 0 then begin
     // TODO: Randomize array
-    PushToArray(_master_links, 'https://raw.githubusercontent.com/gunslingermod/updater_links/master/guns.list');
+    PushToArray(_master_links, MAIN_MASTER_LINK);
+  end else if ParamStr(1) = 'silent' then begin
+    _silent_mode:=true;
+    FZLogMgr.Get.Write('Using SILENT mode', FZ_LOG_IMPORTANT_INFO);
+    PushToArray(_master_links, MAIN_MASTER_LINK);
   end else begin
     FZLogMgr.Get.Write('Set master link to "'+ParamStr(1)+'"', FZ_LOG_INFO);
     PushToArray(_master_links, ParamStr(1));
@@ -1223,6 +1257,13 @@ begin
 
   ChangeState(DL_STATE_INIT);
   Timer1.Enabled:=true;
+end;
+
+procedure TForm1.FormShow(Sender: TObject);
+begin
+  if _silent_mode then begin
+    self.Hide();
+  end;
 end;
 
 procedure TForm1.btn_nextClick(Sender: TObject);
