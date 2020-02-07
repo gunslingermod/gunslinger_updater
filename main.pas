@@ -934,6 +934,10 @@ begin
           error_msg:='err_invalid_masterlist';
         end;
       end;
+
+      if length(error_msg) > 0 then begin
+        DeleteFile(PAnsiChar(UTF8ToWinCP(_master_list_path)));
+      end;
     end;
 
   DL_STATE_UPDATE_DOWNLOADER:
@@ -966,6 +970,7 @@ begin
           end;
         end;
         EndDownloadFileAsync();
+        DeleteFile(PAnsiChar(UTF8ToWinCP(_master_list_path)));
       end else begin
         if _downloader_update_params.size > 0 then begin
           update_progress.Min:=0;
