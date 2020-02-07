@@ -141,6 +141,28 @@ begin
   end;
 end;
 
+procedure DeleteFolder(FolderName: string);
+var
+  SR: TSearchRec;
+  Len: Integer;
+begin
+  Len := Length(FolderName);
+  if FolderName[Len] = '\' then FolderName := Copy(FolderName, 1, Len-1);
+  if sysutils.FindFirst(FolderName + '\*.*', faAnyFile, SR) = 0 then
+  begin
+    repeat
+      if SR.Name = '.' then Continue;
+      if SR.Name = '..' then Continue;
+      FileSetAttr(FolderName + '\' + SR.Name, SR.Attr and faDirectory);
+      if SR.Attr and faDirectory <> 0
+        then DeleteFolder(FolderName + '\' + SR.Name)
+        else DeleteFile(PAnsiChar(FolderName + '\' + SR.Name))
+    until sysutils.FindNext(SR) <> 0;
+    sysutils.FindClose(SR);
+  end;
+  RemoveDir(FolderName);
+end;
+
 procedure PushToArray(var a:FZMasterLinkListAddr; s:string);
 var
   i:integer;
@@ -1116,6 +1138,9 @@ begin
         next_state:=DL_STATE_TERMINAL;
         DumpUninstallList(_uninstall_list);
         if CreateFsgame(parent_root) and CheckAndCorrectUserltx() then begin
+          if not _mod_initially_actual then begin
+            DeleteFolder('userdata\shaders_cache');
+          end;
           MarkInstallationAsValid(true);
           SaveLastUpdateTime(Now(), false);
           if _mod_initially_actual then begin
