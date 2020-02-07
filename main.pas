@@ -86,6 +86,7 @@ var
 
 const
   OPTIONS_CONFIG_NAME:string = 'update_configuration.ini';
+  FILELIST_CONFIG_NAME:string = 'files.list';
 
 implementation
 {$R *.lfm}
@@ -578,6 +579,8 @@ begin
     rewrite(f);
     writeln(f, list);
     writeln(f, 'update.log');
+    writeln(f, OPTIONS_CONFIG_NAME);
+    writeln(f, FILELIST_CONFIG_NAME);
     writeln(f, GetExecutableName());
     closefile(f)
   except
@@ -1266,7 +1269,7 @@ begin
   end;
 
   _download_dir:='.\';
-  _master_list_path:=_download_dir+'files.list';
+  _master_list_path:=_download_dir+FILELIST_CONFIG_NAME;
 
   if ParamCount = 0 then begin
     // TODO: Randomize array
