@@ -14027,16 +14027,28 @@ object Form1: TForm1
     OnClick = btn_nextClick
     TabOrder = 2
   end
+  object lbl_select_options: TLabel
+    Left = 8
+    Height = 21
+    Top = 0
+    Width = 108
+    Caption = 'Select options'
+    Font.Color = clWhite
+    Font.Height = 22
+    Font.Style = [fsBold]
+    ParentColor = False
+    ParentFont = False
+  end
   object Timer1: TTimer
     Enabled = False
     Interval = 200
     OnTimer = Timer1Timer
-    left = 8
-    top = 8
+    left = 472
+    top = 352
   end
   object SelectDirectoryDialog1: TSelectDirectoryDialog
     Title = 'Please select the directory where the original game is installed'
-    left = 40
-    top = 8
+    left = 504
+    top = 352
   end
 end

@@ -77,11 +77,13 @@ begin
   end else if str ='msg_success_run_game'  then begin
     if locale = RUS_ID then result:='Мод был успешно обновлен. Желаете сыграть прямо сейчас?' else result:='The mod has been successfully updated. Do you want to run the game?';
   end else if str ='msg_noactions_run_game'  then begin
-    if locale = RUS_ID then result:='Версия мода актуальна, обновление не требуется. Желаете сыграть прямо сейчас?' else result:='The mod is in actual state, update is not needed. Do you want to run the game?';
+    if locale = RUS_ID then result:='Файлы мода в актуальном состоянии, обновление не требуется. Желаете сыграть прямо сейчас?' else result:='The mod is in actual state, update is not needed. Do you want to run the game?';
   end else if str ='retry_question'  then begin
     if locale = RUS_ID then result:='Попробовать еще раз?' else result:='Retry?';
   end else if str ='next' then begin
     result:=SelectLocalized('Далее', 'Next');
+  end else if str ='caption_select_options' then begin
+    result:=SelectLocalized('Выберите желаемые опции:', 'Please select options to install:');
 
 {  end else if str =  then begin
     if locale = RUS_ID then result:= else result:=;

@@ -48,6 +48,7 @@ type
     Timer1: TTimer;
     update_status: TLabel;
     update_progress: TProgressBar;
+    lbl_select_options: TLabel;
     procedure btn_nextClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure FormShow(Sender: TObject);
@@ -899,6 +900,7 @@ begin
             if not _silent_mode then begin
               self.options_list.Visible:=true;
               self.btn_next.Visible:=true;
+              self.lbl_select_options.Visible:=true;
             end;
           end;
 
@@ -1218,8 +1220,13 @@ begin
   self.options_list.Left:=self.update_progress.Left;
   self.options_list.Width:=self.update_progress.Width;
   self.options_list.Top:=30;
-  self.options_list.Height:=self.update_progress.Top - self.options_list.Top - 60;
+  self.options_list.Height:=self.update_progress.Top - self.options_list.Top - 50;
   self.options_list.Visible:=false;
+
+  self.lbl_select_options.Top:=self.options_list.Top - 25;
+  self.lbl_select_options.Left:=self.update_status.Left;
+  self.lbl_select_options.Visible:=false;
+  self.lbl_select_options.Caption:=LocalizeString('caption_select_options');
 
   self.btn_next.Caption:=LocalizeString('next');
   self.btn_next.Width:=80;
@@ -1230,7 +1237,7 @@ begin
   _downloader_update_params.filename:=GetExecutableName()+update_suffix;
 
   if FileExists(_downloader_update_params.filename) then begin
-     DeleteFile(PAnsiChar(UTF8ToWinCP(_downloader_update_params.filename)));
+    DeleteFile(PAnsiChar(UTF8ToWinCP(_downloader_update_params.filename)));
   end;
 
   _download_dir:='.\';
@@ -1270,6 +1277,7 @@ procedure TForm1.btn_nextClick(Sender: TObject);
 begin
   self.btn_next.Visible:=false;
   self.options_list.Visible:=false;
+  self.lbl_select_options.Visible:=false;
 end;
 
 end.
