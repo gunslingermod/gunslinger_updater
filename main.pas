@@ -785,13 +785,13 @@ begin
     oldname:=UTF8ToWinCP(oldname);
     newname:=UTF8ToWinCP(newname);
     rewrite(f);
-    writeln(f, 'chcp '+inttostr(GetACP())+' >nul');
+    writeln(f, 'chcp '+inttostr(GetACP())+' > nul');
     writeln(f, ':1');
     writeln(f, 'del "'+oldname+'"');
     writeln(f, 'if exist "'+oldname+'" goto 1');
     writeln(f, 'move "'+newname+'" "'+oldname+'"');
     writeln(f, '@start "" "'+oldname+'" '+params);
-    writeln(f, 'del "'+batname+'"');
+    writeln(f, 'del "'+batname+'" && exit');
     closefile(f);
     result:=true;
   except
