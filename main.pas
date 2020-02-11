@@ -149,15 +149,15 @@ var
 begin
   Len := Length(FolderName);
   if FolderName[Len] = '\' then FolderName := Copy(FolderName, 1, Len-1);
-  if sysutils.FindFirst(FolderName + '\*.*', faAnyFile, SR) = 0 then
-  begin
+  if sysutils.FindFirst(FolderName + '\*.*', faAnyFile, SR) = 0 then begin
     repeat
       if SR.Name = '.' then Continue;
       if SR.Name = '..' then Continue;
-      FileSetAttr(FolderName + '\' + SR.Name, SR.Attr and faDirectory);
-      if SR.Attr and faDirectory <> 0
-        then DeleteFolder(FolderName + '\' + SR.Name)
-        else DeleteFile(PAnsiChar(FolderName + '\' + SR.Name))
+      if SR.Attr and faDirectory <> 0 then begin
+        DeleteFolder(FolderName + '\' + SR.Name)
+      end else begin
+        DeleteFile(PAnsiChar(FolderName + '\' + SR.Name))
+      end;
     until sysutils.FindNext(SR) <> 0;
     sysutils.FindClose(SR);
   end;
@@ -219,6 +219,11 @@ var
 const
   UPDATER_SECTION:string ='updater';
 begin
+{$IFDEF SKIP_DOWNLOADER_UPDATE}
+  result:=false;
+  exit;
+{$ENDIF}
+
   result:=false;
   cur_md5:='';
   fname:=GetExecutableName();
@@ -745,23 +750,109 @@ begin
   end;
 end;
 
-function CheckAndCorrectUserltx():boolean;
+function FindLogFile():string;
+var
+  SR: TSearchRec;
 const
-  path:string = 'userdata\user.ltx';
+  LOG_DIR: string = 'userdata\logs\';
+  LOG_NAME: string = 'xray_*.log';
+begin
+  result:='';
+  if sysutils.FindFirst(LOG_DIR+LOG_NAME, faAnyFile, SR) = 0 then begin
+    repeat
+      if SR.Attr and faDirectory = 0 then begin
+        result:=LOG_DIR+SR.Name;
+        break;
+      end;
+    until sysutils.FindNext(SR) <> 0;
+    sysutils.FindClose(SR);
+  end;
+end;
+
+function CheckForCrashInLog(logname:string):boolean;
 var
   f:textfile;
+  ln:string;
 begin
+  result:=false;
+  assignfile(f, logname);
+  try
+    reset(f);
+    while not eof(f) do begin
+      readln(f, ln);
+      if ln = 'stack trace:' then begin
+        result:=true;
+        break;
+      end;
+    end;
+    closefile(f);
+  except
+  end;
+
+end;
+
+function CheckAndCorrectUserltx(var changes_made:boolean):boolean;
+const
+  path:string = 'userdata\user.ltx';
+  path_cp:string= 'userdata\user.ltx.backup';
+var
+  f, f_cp:textfile;
+  logname, ln:string;
+begin
+  changes_made:=false;
   result:=FileExists(path);
   if not result then begin
     ForceDirectories('userdata');
     assignfile(f, path);
     try
       rewrite(f);
-      DumpUserLtx(f, screen.Width, screen.Height);
+      DumpUserLtx(f, screen.Width, screen.Height, true);
       closefile(f);
       result:=true;
+      changes_made:=true;
     except
       result:=false;
+    end;
+  end else begin
+    logname:=FindLogFile();
+    FZLogMgr.Get.Write('Log file is '+logname, FZ_LOG_IMPORTANT_INFO);
+    if (length(logname) > 0) and CheckForCrashInLog(logname) then begin
+      FZLogMgr.Get.Write('Crash detected, rollback to fail-safe settings', FZ_LOG_IMPORTANT_INFO);
+
+      if FileExists(path_cp) then begin
+        DeleteFile(PAnsiChar(path_cp));
+      end;
+
+      if not MoveFile(PAnsiChar(path), PAnsiChar(path_cp)) then begin
+        FZLogMgr.Get.Write('Can''t backup old user.ltx', FZ_LOG_ERROR);
+        result:=false;
+      end else begin
+        assignfile(f, path);
+        assignfile(f_cp, path_cp);
+        try
+          rewrite(f);
+
+          // Copy user's bindings
+          reset(f_cp);
+          while not eof(f_cp) do begin
+            readln(f_cp, ln);
+            if leftstr(ln, length('bind')) = 'bind' then begin
+              writeln(f, ln);
+            end;
+          end;
+          closefile(f_cp);
+
+          //Dump the other settings
+          DumpUserLtx(f, screen.Width, screen.Height, false);
+          closefile(f);
+          result:=true;
+          changes_made:=true;
+
+          DeleteFile(PAnsiChar(logname));
+        except
+          result:=false;
+        end;
+      end;
     end;
   end;
 end;
@@ -837,7 +928,7 @@ var
   md5:string;
   retry_allowed:boolean;
   need_update:boolean;
-
+  configs_were_changed:boolean;
   next_state:DownloaderState;
 begin
   timer1.Enabled:=false;
@@ -1145,13 +1236,14 @@ begin
       if (length(parent_root) <> 0) and confirmed then begin
         next_state:=DL_STATE_TERMINAL;
         DumpUninstallList(_uninstall_list);
-        if CreateFsgame(parent_root) and CheckAndCorrectUserltx() then begin
+        configs_were_changed:=false;
+        if CreateFsgame(parent_root) and CheckAndCorrectUserltx(configs_were_changed) then begin
           if not _mod_initially_actual then begin
             DeleteFolder('userdata\shaders_cache');
           end;
           MarkInstallationAsValid(true);
           SaveLastUpdateTime(Now(), false);
-          if _mod_initially_actual then begin
+          if _mod_initially_actual and not configs_were_changed then begin
             i:=Application.MessageBox(PAnsiChar(LocalizeString('msg_noactions_run_game')), PAnsiChar(LocalizeString('msg_congrats')), MB_YESNO or MB_ICONINFORMATION);
           end else begin
             i:=Application.MessageBox(PAnsiChar(LocalizeString('msg_success_run_game')), PAnsiChar(LocalizeString('msg_congrats')), MB_YESNO or MB_ICONINFORMATION);

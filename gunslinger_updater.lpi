@@ -56,6 +56,12 @@
               </Win32>
             </Options>
           </Linking>
+          <Other>
+            <CustomOptions Value="-dSKIP_DOWNLOADER_UPDATE"/>
+            <OtherDefines Count="1">
+              <Define0 Value="SKIP_DOWNLOADER_UPDATE"/>
+            </OtherDefines>
+          </Other>
         </CompilerOptions>
       </Item2>
       <Item3 Name="Release">
@@ -186,6 +192,12 @@
         </Win32>
       </Options>
     </Linking>
+    <Other>
+      <CustomOptions Value="-dSKIP_DOWNLOADER_UPDATE"/>
+      <OtherDefines Count="1">
+        <Define0 Value="SKIP_DOWNLOADER_UPDATE"/>
+      </OtherDefines>
+    </Other>
   </CompilerOptions>
   <Debugging>
     <Exceptions Count="3">
