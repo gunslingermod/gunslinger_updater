@@ -273,13 +273,13 @@ begin
   writeln(f, 'slot_2 antirad');
   writeln(f, 'slot_3 water');
   writeln(f, 'snd_acceleration on');
-  writeln(f, 'snd_cache_size 16');
+  writeln(f, 'snd_cache_size 128');
   writeln(f, 'snd_device Generic Software');
-  writeln(f, 'snd_efx on');
+  writeln(f, 'snd_efx off');
   writeln(f, 'snd_targets 200');
-  writeln(f, 'snd_unlock off');
-  writeln(f, 'snd_volume_eff 1.');
-  writeln(f, 'snd_volume_music 1.');
+  writeln(f, 'snd_unlock on');
+  writeln(f, 'snd_volume_eff 0.5');
+  writeln(f, 'snd_volume_music 0.5');
   writeln(f, 'sv_activated_return 0');
   writeln(f, 'sv_adm_menu_ban_time ui_mp_am_10_minutes');
   writeln(f, 'sv_adm_menu_ping_limit 25');
