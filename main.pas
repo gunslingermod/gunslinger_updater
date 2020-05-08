@@ -586,7 +586,7 @@ const
   UNINSTALL_DATA_PATH:string='uninstall.dat';
   UPDATER_LOG_NAME:string='update.log';
 begin
-  updatername:=GetExecutableName();
+  updatername:=lowercase(GetExecutableName());
   updatelog_present:=false;
   optionsconfig_present:=false;
   filelistconfig_present:=false;
@@ -617,7 +617,7 @@ begin
     if not updatelog_present then writeln(f, UPDATER_LOG_NAME);
     if not optionsconfig_present then writeln(f, OPTIONS_CONFIG_NAME);
     if not filelistconfig_present then writeln(f, FILELIST_CONFIG_NAME);
-    if not updaterexecutable_present then writeln(f, GetExecutableName());
+    if not updaterexecutable_present then writeln(f, updatername);
     closefile(f)
   except
   end;
