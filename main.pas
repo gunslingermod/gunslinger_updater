@@ -573,20 +573,51 @@ begin
   end;
 end;
 
-procedure DumpUninstallList(list:string);
+procedure DumpUninstallList(list:string; full:boolean);
 var
   f:textfile;
+  str:string;
+  updatelog_present:boolean;
+  optionsconfig_present:boolean;
+  filelistconfig_present:boolean;
+  updaterexecutable_present:boolean;
+  updatername:string;
 const
   UNINSTALL_DATA_PATH:string='uninstall.dat';
+  UPDATER_LOG_NAME:string='update.log';
 begin
+  updatername:=GetExecutableName();
+  updatelog_present:=false;
+  optionsconfig_present:=false;
+  filelistconfig_present:=false;
+  updaterexecutable_present:=false;
+
   assignfile(f, UNINSTALL_DATA_PATH);
   try
-    rewrite(f);
-    writeln(f, list);
-    writeln(f, 'update.log');
-    writeln(f, OPTIONS_CONFIG_NAME);
-    writeln(f, FILELIST_CONFIG_NAME);
-    writeln(f, GetExecutableName());
+    if not full then begin
+      reset(f);
+      while not eof(f) do begin
+        readln(f, str);
+        str:=lowercase(trim(str));
+        if length(str) = 0 then continue;
+
+        if str = UPDATER_LOG_NAME then updatelog_present:=true;
+        if str = OPTIONS_CONFIG_NAME then optionsconfig_present:=true;
+        if str = FILELIST_CONFIG_NAME then filelistconfig_present:=true;
+        if str = updatername then updaterexecutable_present:=true;
+      end;
+      closefile(f);
+
+      append(f);
+    end else if length(list) > 0 then begin
+      rewrite(f);
+      writeln(f, list);
+    end;
+
+    if not updatelog_present then writeln(f, UPDATER_LOG_NAME);
+    if not optionsconfig_present then writeln(f, OPTIONS_CONFIG_NAME);
+    if not filelistconfig_present then writeln(f, FILELIST_CONFIG_NAME);
+    if not updaterexecutable_present then writeln(f, GetExecutableName());
     closefile(f)
   except
   end;
@@ -1235,7 +1266,7 @@ begin
 
       if (length(parent_root) <> 0) and confirmed then begin
         next_state:=DL_STATE_TERMINAL;
-        DumpUninstallList(_uninstall_list);
+        DumpUninstallList(_uninstall_list, true);
         configs_were_changed:=false;
         if CreateFsgame(parent_root) and CheckAndCorrectUserltx(configs_were_changed) then begin
           if not _mod_initially_actual then begin
@@ -1272,6 +1303,7 @@ begin
 
   DL_STATE_TERMINAL:
     begin
+      DumpUninstallList('', false);
       Application.Terminate;
     end;
   end;
