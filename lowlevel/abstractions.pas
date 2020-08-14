@@ -56,7 +56,7 @@ var
 begin
   result:=true;
   thId:=0;
-  CreateThread(nil, 0, pointer(proc), pointer(args), 0, thId);
+  CreateThread(nil, 0, FZCommonHelper.UintToPtr(proc), FZCommonHelper.UintToPtr(args), 0, thId);
 end;
 
 

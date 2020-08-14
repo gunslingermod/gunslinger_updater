@@ -157,7 +157,7 @@ type
 
 implementation
 uses
-  abstractions, windows, LogMgr, sysutils, Decompressor;
+  abstractions, windows, LogMgr, sysutils, Decompressor, CommonHelper;
 
 const
   GHTTPSuccess:cardinal=0;
@@ -171,7 +171,7 @@ const
 { Thread functions & Callbacks }
 procedure CreateThreadedFun(proc:pointer; param:pointer);
 begin
-  VersionAbstraction().ThreadSpawn(uintptr(proc), uintptr(param));
+  VersionAbstraction().ThreadSpawn(FZCommonHelper.PtrToUint(proc), FZCommonHelper.PtrToUint(param));
 end;
 
 procedure DownloaderThreadBody(th:FZDownloaderThread); stdcall;
@@ -355,17 +355,17 @@ begin
 
       useragent:=PAnsiChar('FreeZone Curl-Downloader, build '+{$INCLUDE %DATE});
 
-      curl_easy_setopt(purl, CURLOPT_URL, uintptr(PAnsiChar(dl.GetUrl())));
-      curl_easy_setopt(purl, CURLOPT_WRITEFUNCTION, uintptr(@CurlWriteCb) );
-      curl_easy_setopt(purl, CURLOPT_WRITEDATA, uintptr(dl));
+      curl_easy_setopt(purl, CURLOPT_URL, FZCommonHelper.PtrToUint(PAnsiChar(dl.GetUrl())));
+      curl_easy_setopt(purl, CURLOPT_WRITEFUNCTION, FZCommonHelper.PtrToUint(@CurlWriteCb) );
+      curl_easy_setopt(purl, CURLOPT_WRITEDATA, FZCommonHelper.PtrToUint(dl));
       curl_easy_setopt(purl, CURLOPT_NOPROGRESS, 0);
       curl_easy_setopt(purl, CURLOPT_FAILONERROR, 1);
-      curl_easy_setopt(purl, CURLOPT_USERAGENT, uintptr(useragent));
-      curl_easy_setopt(purl, CURLOPT_XFERINFODATA, uintptr(dl));
-      curl_easy_setopt(purl, CURLOPT_XFERINFOFUNCTION, uintptr(@CurlProgressCb));
-      dl.SetRequestId(uintptr(purl));
+      curl_easy_setopt(purl, CURLOPT_USERAGENT, FZCommonHelper.PtrToUint(useragent));
+      curl_easy_setopt(purl, CURLOPT_XFERINFODATA, FZCommonHelper.PtrToUint(dl));
+      curl_easy_setopt(purl, CURLOPT_XFERINFOFUNCTION, FZCommonHelper.PtrToUint(@CurlProgressCb));
+      dl.SetRequestId(FZCommonHelper.PtrToUint(purl));
       curl_multi_add_handle(_multi_handle, purl);
-      FZLogMgr.Get.Write(TH_LBL+'Download started for dl '+inttostr(cardinal(dl))+', handle '+inttostr(cardinal(purl)), FZ_LOG_INFO);
+      FZLogMgr.Get.Write(TH_LBL+'Download started for dl '+inttostr(FZCommonHelper.PtrToUint(dl))+', handle '+inttostr(FZCommonHelper.PtrToUint(purl)), FZ_LOG_INFO);
 
       dl_i:=length(_downloaders);
       setlength(_downloaders, dl_i+1);
@@ -394,7 +394,7 @@ begin
       if (msg.msg = CURLMSG_DONE) then begin
         dl:=nil;
         for i:=length(_downloaders)-1 downto 0 do begin
-          if _downloaders[i].GetRequestId() = uintptr(msg.easy_handle) then begin
+          if _downloaders[i].GetRequestId() = FZCommonHelper.PtrToUint(msg.easy_handle) then begin
             dl:=_downloaders[i];
             break;
           end;
@@ -422,7 +422,7 @@ begin
           end;
           dl.SetRequestId(0);
         end else begin
-          FZLogMgr.Get.Write(TH_LBL+'Downloader not found for handle '+inttostr(uintptr(dl_handle)), FZ_LOG_ERROR);
+          FZLogMgr.Get.Write(TH_LBL+'Downloader not found for handle '+inttostr(FZCommonHelper.PtrToUint(dl_handle)), FZ_LOG_ERROR);
         end;
       end;
     end;
@@ -440,9 +440,9 @@ begin
   if dl_i>=0 then begin
     try
       dl.Lock();
-      purl:=pointer(dl.GetRequestId());
+      purl:=FZCommonHelper.UintToPtr(dl.GetRequestId());
       if purl<>nil then begin
-        FZLogMgr.Get.Write(TH_LBL+'Cancelling request '+inttostr(uintptr(purl)), FZ_LOG_INFO);
+        FZLogMgr.Get.Write(TH_LBL+'Cancelling request '+inttostr(FZCommonHelper.PtrToUint(purl)), FZ_LOG_INFO);
         if (FZCurlFileDownloader(dl)<>nil) and (INVALID_HANDLE_VALUE<>FZCurlFileDownloader(dl)._file_hndl) then begin
           CloseHandle(FZCurlFileDownloader(dl)._file_hndl);
           FZCurlFileDownloader(dl)._file_hndl:=INVALID_HANDLE_VALUE;

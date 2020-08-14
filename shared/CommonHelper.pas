@@ -28,6 +28,9 @@ type
     class function FloatToString(value: single; precision:integer = 4; digits:integer = 2): string;
     class function ReadFileAsString(fname:string; var str:string):boolean;
     class function MovingPointerReader(var src: pointer; var srcsize: cardinal; dst: pointer; sizetoread: cardinal):boolean;
+
+    class function PtrToUint(p:pointer):uintptr; inline;
+    class function UintToPtr(n:uintptr):pointer; inline;
 end;
 
 const
@@ -375,6 +378,16 @@ begin
   srcsize:=srcsize - sizetoread;
   src:=@pByte(src)[sizetoread];
   result:=true;
+end;
+
+class function FZCommonHelper.PtrToUint(p: pointer): uintptr;
+begin
+  result:={%H-}uintptr(p);
+end;
+
+class function FZCommonHelper.UintToPtr(n: uintptr): pointer;
+begin
+  result:={%H-}pointer(n);
 end;
 
 end.
