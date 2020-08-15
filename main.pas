@@ -34,6 +34,7 @@ type
     enabled:boolean;
     name_ru:string;
     name_en:string;
+    groups:string;
   end;
 
   DownloadOptionsList = array of DownloadOption;
@@ -52,6 +53,7 @@ type
     procedure btn_nextClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure FormShow(Sender: TObject);
+    procedure options_listClickCheck(Sender: TObject);
     procedure Timer1Timer(Sender: TObject);
 
     procedure SetStatus(status:string);
@@ -68,7 +70,7 @@ type
     _dl_info:CurrentDownloadInfo;
     _ignore_maintenance:boolean;
     _uninstall_list:string;
-    _options: DownloadOptionsList;
+    _options:DownloadOptionsList;
 
     _dlThread:FZDownloaderThread;
     _dl:FZFileDownloader;
@@ -90,7 +92,7 @@ const
 
 implementation
 {$R *.lfm}
-uses LogMgr, FastMd5, IniFile, Registry, userltxdumper, IniFiles;
+uses LogMgr, FastMd5, IniFile, Registry, userltxdumper, IniFiles, CommonHelper;
 
 // We need to use 'Native' WinApi functions to avoid problems with conversion of codepages
 // The functions return results using current locale codepeages
@@ -267,6 +269,97 @@ begin
   end;
 end;
 
+function FindInstallationOptionWithSameGroup(var options:DownloadOptionsList; group:string; search_only_active:boolean; exclude_id:integer; start_id:integer = 0):integer;
+var
+  i:integer;
+  groups, cur_group:string;
+begin
+  result:=-1;
+  if length(group) = 0 then exit;
+
+  for i:=start_id to length(options)-1 do begin
+    if search_only_active and not options[i].enabled then continue;
+    if exclude_id = i then continue;
+
+    groups:=options[i].groups+',';
+    cur_group:='';
+    while FZCommonHelper.GetNextParam(groups, cur_group, ',') do begin
+      cur_group:=trim(cur_group);
+      if cur_group = group then begin
+        result:=i;
+        break;
+      end;
+    end;
+
+    if result>=0 then break;
+  end;
+end;
+
+function CanEnableInstallationOption(var options:DownloadOptionsList; id:integer):boolean;
+var
+  groups, group:string;
+begin
+  result:=false;
+  if id >= length(options) then exit;
+  if options[id].enabled then exit;
+
+  result:=true;
+  groups:=options[id].groups+',';
+  group:='';
+  while FZCommonHelper.GetNextParam(groups, group, ',') do begin
+    group:=trim(group);
+    if FindInstallationOptionWithSameGroup(options, group, true, id) >= 0 then begin
+      result:=false;
+      break;
+    end;
+  end;
+end;
+
+function ChangeInstallationOptionStatus(var options:DownloadOptionsList; id:integer; new_status:boolean):boolean;
+begin
+  result:=false;
+  if id >= length(options) then exit;
+  if options[id].enabled = new_status then begin
+    result:=true;
+    exit;
+  end;
+
+  if new_status then begin
+    //need check possibility before activating new item
+    if CanEnableInstallationOption(options, id) then begin
+      options[id].enabled:=true;
+      result:=true;
+    end;
+  end else begin
+    //no need to check - disablig option can't lead to conflicts and always possible
+    options[id].enabled:=false;
+    result:=true;
+  end;
+end;
+
+function ValidateSelectedOptionsList(var options:DownloadOptionsList) :boolean;
+var
+   i:integer;
+   groups, group:string;
+begin
+  result:=true;
+
+  // Проверяем, не прописано ли в двух опциях одинаковых групп!
+  for i:=0 to length(options)-1 do begin
+    if not options[i].enabled then continue;
+    group:='';
+    groups:=options[i].groups+',';
+    while (FZCommonHelper.GetNextParam(groups, group, ',')) do begin
+      group:=trim(group);
+      if FindInstallationOptionWithSameGroup(options, group, true, i) >= 0 then begin
+        result:=false;
+        break;
+      end;
+    end;
+    if not result then break;
+  end;
+end;
+
 function ParseInstallationOptions(list_name:string; var options:DownloadOptionsList):boolean;
 var
   cfg:FZIniFile;
@@ -294,6 +387,7 @@ begin
       FZLogMgr.Get.Write('Parsing options section '+section, FZ_LOG_INFO);
       options[i].key:=cfg.GetStringDef(section, 'key', '' );
 
+      // TODO: handle situation when multiple options have the same key
       if (length(options[i].key)=0) then begin
         FZLogMgr.Get.Write('Invalid key for option #'+inttostr(i), FZ_LOG_ERROR);
         exit;
@@ -301,6 +395,7 @@ begin
 
       options[i].name_en:=cfg.GetStringDef(section, 'name_en', '' );
       options[i].name_ru:=cfg.GetStringDef(section, 'name_ru', '' );
+      options[i].groups:=cfg.GetStringDef(section, 'groups', '' );
 
       if (length(options[i].name_en)>0) and (length(options[i].name_ru) = 0) then begin
         options[i].name_ru:=options[i].name_en;
@@ -314,6 +409,13 @@ begin
       options[i].enabled:=strtointdef(options_cfg.ReadString('options', options[i].key, '0'), 0) <> 0;
     end;
     FZLogMgr.Get.Write('Option '+inttostr(i)+' is '+options[i].key+' ('+options[i].name_ru+' | '+options[i].name_en+')', FZ_LOG_IMPORTANT_INFO);
+
+    if not ValidateSelectedOptionsList(options) then begin
+      FZLogMgr.Get.Write('Invalid options combination, RESET ALL options', FZ_LOG_IMPORTANT_INFO);
+      for i:=0 to options_count-1 do begin
+        options[i].enabled:=false;
+      end;
+    end;
 
     result:=true;
   finally
@@ -1427,6 +1529,45 @@ procedure TForm1.FormShow(Sender: TObject);
 begin
   if _silent_mode then begin
     self.Hide();
+  end;
+end;
+
+procedure TForm1.options_listClickCheck(Sender: TObject);
+var
+  i, idx:integer;
+begin
+  if self.options_list.Count<>length(self._options) then begin
+    FZLogMgr.Get.Write('Options count mismatch! Visual '+inttostr(self.options_list.Count)+', real '+inttostr(length(self._options)), FZ_LOG_ERROR);
+    exit;
+  end;
+
+  idx:=-1;
+  // Пробежимся по всем опциям и найдем индекс той, состояние которой поменялось
+  for i:=0 to self.options_list.Count-1 do begin
+    if self.options_list.Checked[i]<>self._options[i].enabled then begin
+      idx:=i;
+      break;
+    end;
+  end;
+  if idx < 0 then exit;
+
+  // Сообщим о том, что опция выбрана - должны пересчитаться ограничения
+  if not ChangeInstallationOptionStatus(self._options, idx, self.options_list.Checked[i]) then begin
+    FZLogMgr.Get.Write('Cannot change status to '+booltostr(self.options_list.Checked[i])+' for '+self._options[i].key, FZ_LOG_ERROR);
+  end;
+
+  // Перерисуем с учетом новых ограничений
+  for i:=0 to self.options_list.Count-1 do begin
+    if self._options[i].enabled then begin
+      self.options_list.Checked[i]:=true;
+      self.options_list.ItemEnabled[i]:=true;
+    end else if CanEnableInstallationOption(self._options, i) then begin
+      self.options_list.Checked[i]:=false;
+      self.options_list.ItemEnabled[i]:=true;
+    end else begin
+      self.options_list.Checked[i]:=false;
+      self.options_list.ItemEnabled[i]:=false;
+    end;
   end;
 end;
 
