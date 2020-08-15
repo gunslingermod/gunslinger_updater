@@ -20,7 +20,7 @@ rmdir /S /Q lowlevel\backup
 del shared\*.~pas
 del shared\*.bak
 del shared\*.dcu
-rmdir /S /Q lowlevel\backup
+rmdir /S /Q shared\backup
 
 del 3rdparty\*.~pas
 del 3rdparty\*.bak
