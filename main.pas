@@ -78,6 +78,7 @@ type
     _filelist:FZFiles;
     _mod_initially_actual:boolean;
     _silent_mode:boolean;
+    _fast_mode:boolean;
 
   public
 
@@ -360,7 +361,7 @@ begin
   end;
 end;
 
-function ParseInstallationOptions(list_name:string; var options:DownloadOptionsList):boolean;
+function ParseInstallationOptions(list_name:string; var options:DownloadOptionsList; var fast_mode_allowed:boolean):boolean;
 var
   cfg:FZIniFile;
   options_cfg:TIniFile;
@@ -368,6 +369,7 @@ var
   section:string;
 begin
   result:=false;
+  fast_mode_allowed:=false;
 
   cfg:=FZIniFile.Create(UTF8ToWinCP(list_name));
   options_cfg:=TIniFile.Create(OPTIONS_CONFIG_NAME);
@@ -407,14 +409,16 @@ begin
       end;
 
       options[i].enabled:=strtointdef(options_cfg.ReadString('options', options[i].key, '0'), 0) <> 0;
+      FZLogMgr.Get.Write('Option '+inttostr(i)+' is '+options[i].key+' ('+options[i].name_ru+' | '+options[i].name_en+'), status = '+booltostr(options[i].enabled, true), FZ_LOG_IMPORTANT_INFO);
     end;
-    FZLogMgr.Get.Write('Option '+inttostr(i)+' is '+options[i].key+' ('+options[i].name_ru+' | '+options[i].name_en+')', FZ_LOG_IMPORTANT_INFO);
 
     if not ValidateSelectedOptionsList(options) then begin
       FZLogMgr.Get.Write('Invalid options combination, RESET ALL options', FZ_LOG_IMPORTANT_INFO);
       for i:=0 to options_count-1 do begin
         options[i].enabled:=false;
       end;
+    end else begin
+      fast_mode_allowed:=true;
     end;
 
     result:=true;
@@ -1063,13 +1067,15 @@ var
   need_update:boolean;
   configs_were_changed:boolean;
   next_state:DownloaderState;
+  fastmode_allowed:boolean;
 begin
   timer1.Enabled:=false;
   timer1.Interval:=0;
   error_msg:='';
   error_caption:='err_caption';
   error_icon_style:=MB_ICONERROR;
-  retry_allowed:=not _silent_mode;
+  retry_allowed:=not _silent_mode and not _fast_mode;
+  fastmode_allowed:=true;
 
   case _state of
   DL_STATE_INIT:
@@ -1137,7 +1143,7 @@ begin
         end;
       end else begin
         //Пробуем распарсить все доступные опции
-        if ParseInstallationOptions(_master_list_path, _options) then begin
+        if ParseInstallationOptions(_master_list_path, _options, fastmode_allowed) then begin
           //Рисуем на форме доступные опции
           if length(_options) > 0 then begin
             self.options_list.Items.Clear();
@@ -1146,14 +1152,31 @@ begin
               self.options_list.Checked[i]:=_options[i].enabled;
             end;
 
-            if not _silent_mode then begin
+            if fastmode_allowed and (_fast_mode or _silent_mode) then begin
+              // Выбранный список опций валиден и непротиворечив, режимы fast и silent доступны
+              // Не показываем никаких контролов пользователю, чтобы стейт-машина автоматом приняла его
+              FZLogMgr.Get.Write('Applying previous-saved options and skip selection in GUI', FZ_LOG_IMPORTANT_INFO);
+              self.options_list.Visible:=false;
+              self.btn_next.Visible:=false;
+              self.lbl_select_options.Visible:=false;
+              ChangeState(DL_STATE_SELECT_CONFIG);
+            end else if _silent_mode then begin
+              // Опции из конфига противоречат друг другу, но мы в silent-режиме
+              // Однозначно надо не показывать контролы и сохранять инфу о том, что требуется обновление
+              FZLogMgr.Get.Write('Mutually exclusive options in silent mode - terminating', FZ_LOG_IMPORTANT_INFO);
+              SaveLastUpdateTime(Now(), true);
+              ChangeState(DL_STATE_TERMINAL);
+            end else begin
+              // Используем обычный графический режим с правом пользователя на самостоятельный выбор опций
+              FZLogMgr.Get.Write('Now allow user to select options', FZ_LOG_IMPORTANT_INFO);
               self.options_list.Visible:=true;
               self.btn_next.Visible:=true;
               self.lbl_select_options.Visible:=true;
+              ChangeState(DL_STATE_SELECT_CONFIG);
             end;
+          end else begin
+            ChangeState(DL_STATE_SELECT_CONFIG);
           end;
-
-          ChangeState(DL_STATE_SELECT_CONFIG);
         end else begin
           error_msg:='err_invalid_masterlist';
         end;
@@ -1412,7 +1435,7 @@ begin
 
   if length(error_msg) > 0 then begin
     FZLogMgr.Get.Write('Visual Error: '+error_msg, FZ_LOG_ERROR);
-    if _silent_mode then begin
+    if _silent_mode or _fast_mode then begin
       ChangeState(DL_STATE_TERMINAL);
     end else if retry_allowed then begin
       error_msg:=LocalizeString(error_msg);
@@ -1493,6 +1516,9 @@ begin
   self.btn_next.Top:=options_list.Top+self.options_list.Height+10;
   self.btn_next.Visible:=false;
 
+  self._silent_mode:=false;
+  self._fast_mode:=false;
+
   _downloader_update_params.filename:=GetExecutableName()+update_suffix;
 
   if FileExists(_downloader_update_params.filename) then begin
@@ -1508,6 +1534,10 @@ begin
   end else if ParamStr(1) = 'silent' then begin
     _silent_mode:=true;
     FZLogMgr.Get.Write('Using SILENT mode', FZ_LOG_IMPORTANT_INFO);
+    PushToArray(_master_links, MAIN_MASTER_LINK);
+  end else if ParamStr(1) = 'fast' then begin
+    _fast_mode:=true;
+    FZLogMgr.Get.Write('Using FAST mode', FZ_LOG_IMPORTANT_INFO);
     PushToArray(_master_links, MAIN_MASTER_LINK);
   end else begin
     FZLogMgr.Get.Write('Set master link to "'+ParamStr(1)+'"', FZ_LOG_INFO);

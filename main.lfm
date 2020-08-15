@@ -14015,6 +14015,7 @@ object Form1: TForm1
     Top = 26
     Width = 576
     ItemHeight = 0
+    OnClickCheck = options_listClickCheck
     TabOrder = 1
     Visible = False
   end
