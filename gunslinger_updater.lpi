@@ -21,7 +21,7 @@
           <Version Value="11"/>
           <PathDelim Value="\"/>
           <Target>
-            <Filename Value="build\gunslinger_updater.exe" ApplyConventions="False"/>
+            <Filename Value="build\CheckUpdates.exe" ApplyConventions="False"/>
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir)"/>
@@ -69,7 +69,7 @@
           <Version Value="11"/>
           <PathDelim Value="\"/>
           <Target>
-            <Filename Value="build\gunslinger_updater.exe" ApplyConventions="False"/>
+            <Filename Value="build\CheckUpdates.exe" ApplyConventions="False"/>
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir)"/>
@@ -177,7 +177,7 @@
     <Version Value="11"/>
     <PathDelim Value="\"/>
     <Target>
-      <Filename Value="build\gunslinger_updater.exe" ApplyConventions="False"/>
+      <Filename Value="build\CheckUpdates.exe" ApplyConventions="False"/>
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
