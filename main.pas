@@ -496,33 +496,57 @@ end;
 function CheckFileConditionString(condstr:string; options:DownloadOptionsList):boolean;
 var
   inverse:boolean;
-  i:integer;
+  i, j:integer;
   opt_found:boolean;
+  condstr_mod:string;
+  cur_cond:string;
+const
+  OP_STOP:AnsiChar='#';
+  OP_NEG:AnsiChar='!';
+  OP_OR:AnsiChar='|';
 begin
-  result:=true;
-  if length(condstr) = 0 then exit;
+  result:=false;
+  inverse:=false;
+  cur_cond:='';
+  condstr_mod:=condstr+OP_OR+OP_STOP;
+  for i:=1 to length(condstr_mod) do begin
+    if condstr_mod[i]=OP_STOP then begin
+        break;
+    end else if condstr_mod[i]=OP_NEG then begin
+      inverse:=not inverse;
+    end else if condstr_mod[i]=OP_OR then begin
+      cur_cond:=trim(cur_cond);
 
-  if condstr[1]='!' then begin
-    inverse:=true;
-    condstr:=trim(rightstr(condstr, length(condstr)-1));
-  end else begin
-    inverse:=false;
-  end;
-  if length(condstr) = 0 then exit;
+      // Пустой кондишн считаем всегда истинным
+      if length(cur_cond) = 0 then begin
+        result:=true;
+        break;
+      end;
 
-  opt_found:=false;
-  for i:=0 to length(options)-1 do begin
-    if options[i].key = condstr then begin
-      opt_found:=true;
-      result:=options[i].enabled;
-      break;
+      opt_found:=false;
+      for j:=0 to length(options)-1 do begin
+        if options[j].key = cur_cond then begin
+          opt_found:=true;
+          result:=options[j].enabled;
+          break;
+        end;
+      end;
+
+      if not opt_found then begin
+        result:=inverse;
+      end else if inverse then begin
+        result:=not result;
+      end;
+
+      if result then begin
+        break;
+      end else begin
+        inverse:=false;
+        cur_cond:='';
+      end;
+    end else begin
+      cur_cond:=cur_cond+condstr_mod[i];
     end;
-  end;
-
-  if not opt_found then begin
-    result:=inverse;
-  end else if inverse then begin
-    result:=not result;
   end;
 end;
 
