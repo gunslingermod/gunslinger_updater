@@ -60,6 +60,7 @@ type
     procedure ChangeState(state:DownloaderState);
     function StartDownloadFileAsync(link:string; filename:string):boolean;
     function EndDownloadFileAsync():boolean;
+    procedure RedrawOptionsChecks();
   private
     _state:DownloaderState;
     _master_links:FZMasterLinkListAddr;
@@ -854,12 +855,6 @@ begin
     parent_root:= '$game_root$ = false| false| '+ UTF8ToWinCP(parent_root);
     writeln(f, parent_root);
     writeln(f, '$app_data_root$ = false | false | $fs_root$| userdata\');
-    writeln(f, '$arch_dir$ = false| false| $game_root$');
-    writeln(f, '$arch_dir_levels$ = false| false| $game_root$| levels\');
-    writeln(f, '$arch_dir_resources$ = false| false| $game_root$| resources\');
-    writeln(f, '$arch_dir_localization$ = false| false| $game_root$| localization\');
-    writeln(f, '$arch_dir_patches$ = false| true| $fs_root$| patches\');
-    writeln(f, '$game_arch_mp$ = false| false| $game_root$| mp\');
     writeln(f, '$game_data$ = false| true| $fs_root$| gamedata\');
     writeln(f, '$game_ai$ = true| false| $game_data$| ai\');
     writeln(f, '$game_spawn$ = true| false| $game_data$| spawns\');
@@ -876,6 +871,12 @@ begin
     writeln(f, '$textures$ = true| true| $game_data$| textures\');
     writeln(f, '$level$ = false| false| $game_levels$');
     writeln(f, '$game_scripts$ = true| false| $game_data$| scripts\');
+    writeln(f, '$arch_dir$ = false| false| $game_root$');
+    writeln(f, '$arch_dir_levels$ = false| false| $game_root$| levels\');
+    writeln(f, '$arch_dir_resources$ = false| false| $game_root$| resources\');
+    writeln(f, '$arch_dir_localization$ = false| false| $game_root$| localization\');
+    writeln(f, '$arch_dir_patches$ = false| true| $fs_root$| patches\');
+    writeln(f, '$game_arch_mp$ = false| false| $game_root$| mp\');
     writeln(f, '$logs$ = true| false| $app_data_root$| logs\');
     writeln(f, '$screenshots$ = true| false| $app_data_root$| screenshots\');
     writeln(f, '$game_saves$ = true| false| $app_data_root$| savedgames\');
@@ -1159,6 +1160,7 @@ begin
               self.options_list.Visible:=false;
               self.btn_next.Visible:=false;
               self.lbl_select_options.Visible:=false;
+              RedrawOptionsChecks();
               ChangeState(DL_STATE_SELECT_CONFIG);
             end else if _silent_mode then begin
               // Опции из конфига противоречат друг другу, но мы в silent-режиме
@@ -1172,9 +1174,11 @@ begin
               self.options_list.Visible:=true;
               self.btn_next.Visible:=true;
               self.lbl_select_options.Visible:=true;
+              RedrawOptionsChecks();
               ChangeState(DL_STATE_SELECT_CONFIG);
             end;
           end else begin
+            RedrawOptionsChecks();
             ChangeState(DL_STATE_SELECT_CONFIG);
           end;
         end else begin
@@ -1562,6 +1566,24 @@ begin
   end;
 end;
 
+procedure TForm1.RedrawOptionsChecks();
+var
+  i:integer;
+begin
+  for i:=0 to self.options_list.Count-1 do begin
+    if self._options[i].enabled then begin
+      self.options_list.Checked[i]:=true;
+      self.options_list.ItemEnabled[i]:=true;
+    end else if CanEnableInstallationOption(self._options, i) then begin
+      self.options_list.Checked[i]:=false;
+      self.options_list.ItemEnabled[i]:=true;
+    end else begin
+      self.options_list.Checked[i]:=false;
+      self.options_list.ItemEnabled[i]:=false;
+    end;
+  end;
+end;
+
 procedure TForm1.options_listClickCheck(Sender: TObject);
 var
   i, idx:integer;
@@ -1587,18 +1609,7 @@ begin
   end;
 
   // Перерисуем с учетом новых ограничений
-  for i:=0 to self.options_list.Count-1 do begin
-    if self._options[i].enabled then begin
-      self.options_list.Checked[i]:=true;
-      self.options_list.ItemEnabled[i]:=true;
-    end else if CanEnableInstallationOption(self._options, i) then begin
-      self.options_list.Checked[i]:=false;
-      self.options_list.ItemEnabled[i]:=true;
-    end else begin
-      self.options_list.Checked[i]:=false;
-      self.options_list.ItemEnabled[i]:=false;
-    end;
-  end;
+  RedrawOptionsChecks();
 end;
 
 procedure TForm1.btn_nextClick(Sender: TObject);
