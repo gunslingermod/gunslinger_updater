@@ -878,6 +878,7 @@ begin
     rewrite(f);
     parent_root:= '$game_root$ = false| false| '+ UTF8ToWinCP(parent_root);
     writeln(f, parent_root);
+{$IFDEF CHANGES_LOCKED}
     writeln(f, '$app_data_root$ = false | false | $fs_root$| userdata\');
     writeln(f, '$game_data$ = false| true| $fs_root$| gamedata\');
     writeln(f, '$game_ai$ = true| false| $game_data$| ai\');
@@ -905,6 +906,35 @@ begin
     writeln(f, '$screenshots$ = true| false| $app_data_root$| screenshots\');
     writeln(f, '$game_saves$ = true| false| $app_data_root$| savedgames\');
     writeln(f, '$downloads$ = false| false| $app_data_root$');
+{$ELSE}
+    writeln(f, '$app_data_root$ = false | false | $fs_root$| userdata\');
+    writeln(f, '$arch_dir$ = false| false| $game_root$');
+    writeln(f, '$arch_dir_levels$ = false| false| $game_root$| levels\');
+    writeln(f, '$arch_dir_resources$ = false| false| $game_root$| resources\');
+    writeln(f, '$arch_dir_localization$ = false| false| $game_root$| localization\');
+    writeln(f, '$arch_dir_patches$ = false| true| $fs_root$| patches\');
+    writeln(f, '$game_arch_mp$ = false| false| $game_root$| mp\');
+    writeln(f, '$game_data$ = false| true| $fs_root$| gamedata\');
+    writeln(f, '$game_ai$ = true| false| $game_data$| ai\');
+    writeln(f, '$game_spawn$ = true| false| $game_data$| spawns\');
+    writeln(f, '$game_levels$ = true| false| $game_data$| levels\');
+    writeln(f, '$game_meshes$ = true| true| $game_data$| meshes\');
+    writeln(f, '$game_anims$ = true| true| $game_data$| anims\');
+    writeln(f, '$game_dm$ = true| true| $game_data$| meshes\');
+    writeln(f, '$game_shaders$ = true| true| $game_data$| shaders\');
+    writeln(f, '$game_sounds$ = true| true| $game_data$| sounds\');
+    writeln(f, '$game_textures$ = true| true| $game_data$| textures\');
+    writeln(f, '$game_config$ = true| false| $game_data$| configs\');
+    writeln(f, '$game_weathers$ = true| false| $game_config$| environment\weathers');
+    writeln(f, '$game_weather_effects$ = true| false| $game_config$| environment\weather_effects');
+    writeln(f, '$textures$ = true| true| $game_data$| textures\');
+    writeln(f, '$level$ = false| false| $game_levels$');
+    writeln(f, '$game_scripts$ = true| false| $game_data$| scripts\');
+    writeln(f, '$logs$ = true| false| $app_data_root$| logs\');
+    writeln(f, '$screenshots$ = true| false| $app_data_root$| screenshots\');
+    writeln(f, '$game_saves$ = true| false| $app_data_root$| savedgames\');
+    writeln(f, '$downloads$ = false| false| $app_data_root$');
+{$ENDIF}
     closefile(f);
     result:=true;
   except
