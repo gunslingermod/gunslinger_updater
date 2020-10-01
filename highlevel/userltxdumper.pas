@@ -142,6 +142,8 @@ begin
   writeln(f, 'net_sv_pending_lim 3');
   writeln(f, 'net_sv_update_rate 30');
   writeln(f, 'npc_lasers off');
+  writeln(f, 'pda_autozoom on');
+  writeln(f, 'pda_savezoomstate off');
   writeln(f, 'ph_frequency 100.00000');
   writeln(f, 'ph_iterations 18');
   writeln(f, 'r1_detail_textures off');
