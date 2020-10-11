@@ -12,8 +12,8 @@ uses
 
 type
 
-  MasterListParseResult = (MASTERLIST_PARSE_OK, MASTERLIST_PARSE_ERROR, MASTERLIST_MAINTENANCE, MASTERLIST_CANTPARSE);
-  DownloaderState = (DL_STATE_INIT, DL_STATE_MASTERLIST_START_DOWNLOADING, DL_STATE_MASTERLIST_LOADING, DL_STATE_UPDATE_DOWNLOADER, DL_STATE_MASTERLIST_PREPARSE, DL_STATE_SELECT_CONFIG, DL_STATE_MASTERLIST_FILESPARSE, DL_STATE_DATA_LOADING, DL_STATE_DATA_LOADING_COMPLETED, DL_STATE_RUN_GAME, DL_STATE_TERMINAL);
+  MasterListParseResult = (MASTERLIST_PARSE_OK, MASTERLIST_PARSE_ERROR, MASTERLIST_MAINTENANCE, MASTERLIST_CANTPARSE, MASTERLIST_UNDEFINED);
+  DownloaderState = (DL_STATE_INIT, DL_STATE_MASTERLIST_START_DOWNLOADING, DL_STATE_MASTERLIST_LOADING, DL_STATE_UPDATE_DOWNLOADER, DL_STATE_MASTERLIST_PREPARSE, DL_STATE_SELECT_CONFIG, DL_STATE_MASTERLIST_PARSER_THREAD_WORKING, DL_STATE_MASTERLIST_PARSER_THREAD_FINISHED, DL_STATE_DATA_LOADING, DL_STATE_DATA_LOADING_COMPLETED, DL_STATE_RUN_GAME, DL_STATE_TERMINAL);
   FZMasterLinkListAddr = array of string;
 
   DownloaderUpdateParams = record
@@ -25,6 +25,7 @@ type
 
   CurrentDownloadInfo = record
     lock:TCriticalSection;
+    masterlist_parse_result:MasterListParseResult;
     info:FZFileActualizingProgressInfo;
   end;
   pCurrentDownloadInfo = ^CurrentDownloadInfo;
@@ -644,6 +645,24 @@ begin
     end;
   finally
     cfg.Free();
+  end;
+end;
+
+procedure DirectoryScanner(frm:TForm1); stdcall;
+var
+  parse_res:MasterListParseResult;
+begin
+  FZLogMgr.Get.Write('Scanning path "'+frm._download_dir+'"', FZ_LOG_INFO);
+  if frm._filelist.ScanPath(frm._download_dir) then begin
+    FZLogMgr.Get.Write('Parsing master list "'+frm._master_list_path+'"', FZ_LOG_INFO);
+    parse_res:=ParseFileList(frm._master_list_path, frm._filelist, frm._ignore_maintenance, frm._uninstall_list, frm._options);
+    EnterCriticalSection(frm._dl_info.lock);
+    frm._dl_info.masterlist_parse_result:=parse_res;
+    LeaveCriticalSection(frm._dl_info.lock);
+  end else begin
+    EnterCriticalSection(frm._dl_info.lock);
+    frm._dl_info.masterlist_parse_result:=MASTERLIST_PARSE_ERROR;
+    LeaveCriticalSection(frm._dl_info.lock);
   end;
 end;
 
@@ -1295,25 +1314,47 @@ begin
           _options[i].enabled:=self.options_list.Checked[i];
           FZLogMgr.Get.Write('Option "'+_options[i].key+'" status is "'+booltostr(_options[i].enabled, true)+'"', FZ_LOG_INFO);
         end;
-        ChangeState(DL_STATE_MASTERLIST_FILESPARSE)
+
+        _dl_info.masterlist_parse_result:=MASTERLIST_UNDEFINED;
+        _filelist:=FZFiles.Create();
+        _filelist.SetDlMode(FZ_DL_MODE_CURL);
+        InitializeCriticalSection(_dl_info.lock);
+        _filelist.SetCallback(@DownloadCallback, @_dl_info);
+        tid:=0;
+        _th_handle:=CreateThread(nil, 0, @DirectoryScanner, self, 0, tid);
+        if _th_handle <> 0 then begin
+          SetStatus('stage_calc_files');
+          ChangeState(DL_STATE_MASTERLIST_PARSER_THREAD_WORKING);
+        end else begin
+          error_msg:='err_cant_start_calc_thread';
+        end;
+
+        if length(error_msg) > 0 then begin
+          DeleteCriticalSection(_dl_info.lock);
+          FreeAndNil(_filelist);
+          DeleteFile(PAnsiChar(UTF8ToWinCP(_master_list_path)));
+        end;
       end;
     end;
 
-  DL_STATE_MASTERLIST_FILESPARSE:
+  DL_STATE_MASTERLIST_PARSER_THREAD_WORKING:
+    begin
+      retry_allowed:=false;
+      EnterCriticalSection(_dl_info.lock);
+      master_parse_res:=_dl_info.masterlist_parse_result;
+      LeaveCriticalSection(_dl_info.lock);
+      if master_parse_res <> MASTERLIST_UNDEFINED then begin
+        ChangeState(DL_STATE_MASTERLIST_PARSER_THREAD_FINISHED);
+      end;
+    end;
+
+  DL_STATE_MASTERLIST_PARSER_THREAD_FINISHED:
     begin
       retry_allowed:=false;
 
-      master_parse_res := MASTERLIST_PARSE_ERROR;
-
-      _filelist:=FZFiles.Create();
-      _filelist.SetDlMode(FZ_DL_MODE_CURL);
-      InitializeCriticalSection(_dl_info.lock);
-      _filelist.SetCallback(@DownloadCallback, @_dl_info);
-      FZLogMgr.Get.Write('Scanning path "'+_download_dir+'"', FZ_LOG_INFO);
-      if _filelist.ScanPath(_download_dir) then begin
-        FZLogMgr.Get.Write('Parsing master list "'+_master_list_path+'"', FZ_LOG_INFO);
-        master_parse_res:=ParseFileList(_master_list_path, _filelist, _ignore_maintenance, _uninstall_list, _options);
-      end;
+      EnterCriticalSection(_dl_info.lock);
+      master_parse_res:=_dl_info.masterlist_parse_result;
+      LeaveCriticalSection(_dl_info.lock);
 
       if master_parse_res = MASTERLIST_PARSE_ERROR then begin
         error_msg:='err_invalid_masterlist';
