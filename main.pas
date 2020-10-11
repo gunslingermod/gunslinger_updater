@@ -8,7 +8,7 @@ uses
   Classes, SysUtils, FileUtil, Forms, Controls, Graphics, Dialogs, ComCtrls,
   StdCtrls, ExtCtrls, CheckLst,
 
-  HttpDownloader, FileManager, Windows, LazUTF8, Localizer;
+  HttpDownloader, FileManager, Windows, LazUTF8, Localizer, math;
 
 type
 
@@ -1403,8 +1403,8 @@ begin
       end else begin
         if (progress.estimated_dl_size > 0) and (progress.total_downloaded <= progress.estimated_dl_size) then begin
           update_progress.Min:=0;
-          update_progress.Max:=progress.estimated_dl_size;
-          update_progress.Position:=progress.total_downloaded;
+          update_progress.Max:=1000;
+          update_progress.Position:=floor((progress.total_downloaded / progress.estimated_dl_size) * 1000);
         end;
       end;
     end;
