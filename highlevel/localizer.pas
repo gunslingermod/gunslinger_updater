@@ -19,7 +19,7 @@ begin
   end else if str = 'stage_parse_masterlist' then begin
     result:=SelectLocalized('Обработка мастер-списка...', 'Parsing master-list...');
   end else if str = 'stage_calc_files' then begin
-    result:=SelectLocalized('Сверка имеющихся файлов...', 'Checking files...');
+    result:=SelectLocalized('Анализ конфигурации...', 'Analyzing current configuration...');
   end else if str = 'stage_update_downloader' then begin
     result:=SelectLocalized('Обновление загрузчика...', 'Updating downloader...');
   end else if str = 'stage_dl_content'  then begin
@@ -47,7 +47,7 @@ begin
   end else if str = 'err_cant_start_dl_thread' then begin
     result:=SelectLocalized('Не удалось начать загрузку', 'Problems while creating downloader thread');
   end else if str = 'err_cant_start_calc_thread' then begin
-    result:=SelectLocalized('Не удалось начать сверку файлов', 'Problems while creating checker thread');
+    result:=SelectLocalized('Не удалось начать анализ конфигурации', 'Problems while creating checker thread');
   end else if str = 'err_integrity_check_failure' then begin
     result:=SelectLocalized('Нарушена целостность скачанных файлов', 'Update integrity check failed.');
   end else if str = 'err_bat_copy_fail' then begin
