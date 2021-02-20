@@ -84,6 +84,10 @@ begin
     result:=SelectLocalized('Далее', 'Next');
   end else if str ='caption_select_options' then begin
     result:=SelectLocalized('Выберите желаемые опции:', 'Please select options to install:');
+  end else if str ='category_downloader_update' then begin
+    result:=SelectLocalized('Загрузчик обновлений мода (после его обновления будут запущены поиск и установка других обновлений для мода)', 'Mod updater (after its update we will start the search and installation of other updates)');
+  end else if str ='category_update_conflict_resolve' then begin
+    result:=SelectLocalized('Разрешение конфликта установленных дополнений', 'Resolving conflict of installed addons');
   end;
 end;
 

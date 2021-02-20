@@ -474,10 +474,11 @@ begin
   end;
 end;
 
-procedure SaveLastUpdateTime(time:TDateTime; updates_present:boolean);
+procedure SaveLastUpdateTime(time:TDateTime; updates_present:boolean; updates_descr:TStringList);
 var
   options_cfg:TIniFile;
   val:string;
+  i:integer;
 begin
   options_cfg:=TIniFile.Create(OPTIONS_CONFIG_NAME);
   try
@@ -488,6 +489,15 @@ begin
     end;
     options_cfg.WriteString('main', 'updates_present', val);
     options_cfg.WriteString('main', 'last_update_check', DateTimeToStr(time));
+
+    if updates_descr=nil then begin
+      options_cfg.WriteInteger('update_components', 'lines_count', 0);
+    end else begin
+      options_cfg.WriteInteger('update_components', 'lines_count', updates_descr.Count);
+      for i:=0 to updates_descr.Count-1 do begin
+        options_cfg.WriteString('update_components', 'line_'+inttostr(i), updates_descr[i]);
+      end;
+    end;
   finally
     options_cfg.Free();
   end;
@@ -554,7 +564,7 @@ end;
 function ParseFileList(list_name:string; filelist:FZFiles; ignore_maintenance:boolean; var items_to_install:string; options:DownloadOptionsList):MasterListParseResult;
 var
   cfg:FZIniFile;
-  section, filename, fileurl, condstr, params_url:string;
+  section, filename, fileurl, condstr, params_url, description, desc_sect:string;
   meet_condition:boolean;
   files_count, i, compression:integer;
   fileCheckParams:FZCheckParams;
@@ -625,6 +635,14 @@ begin
           exit;
         end;
 
+        description:=SelectLocalized(cfg.GetStringDef(section, 'description_ru', ''), cfg.GetStringDef(section, 'description_en', ''));
+        if length(description) = 0 then begin
+          desc_sect:=cfg.GetStringDef(section, 'desc_section', '');
+          if length(desc_sect)>0 then begin
+            description:=SelectLocalized(cfg.GetStringDef(desc_sect, 'description_ru', ''), cfg.GetStringDef(desc_sect, 'description_en', ''));
+          end;
+        end;
+
         // We use file params from master-config by default
         section_actual:=section;
         cfg_actual:=cfg;
@@ -693,7 +711,7 @@ begin
             result:=MASTERLIST_PARSE_ERROR;
             exit;
           end;
-        end else if not fileList.UpdateFileInfo(filename, fileurl, compression, fileCheckParams) then begin
+        end else if not fileList.UpdateFileInfo(filename, fileurl, description, compression, fileCheckParams) then begin
           FZLogMgr.Get.Write('Cannot update file info #'+inttostr(i)+' ('+filename+')', FZ_LOG_ERROR);
           result:=MASTERLIST_PARSE_ERROR;
           exit;
@@ -776,7 +794,7 @@ begin
   end;
 end;
 
-function IsAllFilesActual(filelist:FZFiles):boolean;
+function IsAllFilesActual(filelist:FZFiles; notes:TStringList):boolean;
 var
   i:integer;
 begin
@@ -785,7 +803,13 @@ begin
     if (filelist.GetEntry(i).required_action <> FZ_FILE_ACTION_NO) and (filelist.GetEntry(i).required_action<>FZ_FILE_ACTION_IGNORE) then begin
       FZLogMgr.Get.Write('File "'+ filelist.GetEntry(i).name+'" NOT in actual state ('+inttostr(integer(filelist.GetEntry(i).required_action))+')', FZ_LOG_INFO);
       result:=false;
-      break;
+      if notes = nil then begin
+        break;
+      end else begin
+        if length(filelist.GetEntry(i).description) > 0 then begin
+          notes.Add(filelist.GetEntry(i).description);
+        end;
+      end;
     end;
   end;
 end;
@@ -1209,6 +1233,8 @@ var
   configs_were_changed:boolean;
   next_state:DownloaderState;
   fastmode_allowed:boolean;
+
+  update_notes:TStringList;
 begin
   timer1.Enabled:=false;
   timer1.Interval:=0;
@@ -1228,7 +1254,7 @@ begin
 
       if _silent_mode then begin
         // To prevent start multiple updater instances in background
-        SaveLastUpdateTime(Now(), false);
+        SaveLastUpdateTime(Now(), false, nil);
       end;
 
       ChangeState(DL_STATE_MASTERLIST_START_DOWNLOADING);
@@ -1275,7 +1301,13 @@ begin
         SetStatus('stage_update_downloader');
         if _silent_mode then begin
           FZLogMgr.Get.Write('Downloader needs update', FZ_LOG_INFO);
-          SaveLastUpdateTime(Now(), true);
+          update_notes:=TStringList.Create();
+          try
+            update_notes.Add(LocalizeString('category_downloader_update'));
+            SaveLastUpdateTime(Now(), true, update_notes);
+          finally
+            update_notes.Free;
+          end;
           ChangeState(DL_STATE_TERMINAL);
         end else if not StartDownloadFileAsync(_downloader_update_params.url, _downloader_update_params.filename) then begin
           error_msg := 'err_updater_update_dl';
@@ -1306,7 +1338,13 @@ begin
               // Опции из конфига противоречат друг другу, но мы в silent-режиме
               // Однозначно надо не показывать контролы и сохранять инфу о том, что требуется обновление
               FZLogMgr.Get.Write('Mutually exclusive options in silent mode - terminating', FZ_LOG_IMPORTANT_INFO);
-              SaveLastUpdateTime(Now(), true);
+              update_notes:=TStringList.Create();
+              try
+                update_notes.Add(LocalizeString('category_update_conflict_resolve'));
+                SaveLastUpdateTime(Now(), true, update_notes);
+              finally
+                update_notes.Free();
+              end;
               ChangeState(DL_STATE_TERMINAL);
             end else begin
               // Используем обычный графический режим с правом пользователя на самостоятельный выбор опций
@@ -1436,8 +1474,17 @@ begin
           FilterDeletionItems(_master_list_path, _filelist, _options);
           _filelist.SortBySize();
           _filelist.Dump(FZ_LOG_INFO);
-          need_update:=not IsAllFilesActual(_filelist);
-          SaveLastUpdateTime(Now(), need_update);
+
+          need_update:=false;
+          update_notes:=TStringList.Create();
+          try
+            update_notes.Sorted:=true;
+            update_notes.Duplicates:=dupIgnore;
+            need_update:=not IsAllFilesActual(_filelist, update_notes);
+            SaveLastUpdateTime(Now(), need_update, update_notes);
+          finally
+            update_notes.Free;
+          end;
           FZLogMgr.Get.Write('Need update: '+booltostr(need_update, true), FZ_LOG_IMPORTANT_INFO);
           ChangeState(DL_STATE_TERMINAL);
         end else begin
@@ -1446,7 +1493,7 @@ begin
           FilterDeletionItems(_master_list_path, _filelist, _options);
           _filelist.SortBySize();
           _filelist.Dump(FZ_LOG_INFO);
-          if IsAllFilesActual(_filelist) then begin
+          if IsAllFilesActual(_filelist, nil) then begin
             _mod_initially_actual:=true;
             FZLogMgr.Get.Write('All files are in actual state', FZ_LOG_IMPORTANT_INFO);
             self.update_progress.Min:=0;
@@ -1564,7 +1611,7 @@ begin
             DeleteFolder('userdata\shaders_cache');
           end;
           MarkInstallationAsValid(true);
-          SaveLastUpdateTime(Now(), false);
+          SaveLastUpdateTime(Now(), false, nil);
           if _mod_initially_actual and not configs_were_changed then begin
             i:=Application.MessageBox(PAnsiChar(LocalizeString('msg_noactions_run_game')), PAnsiChar(LocalizeString('msg_congrats')), MB_YESNO or MB_ICONINFORMATION);
           end else begin

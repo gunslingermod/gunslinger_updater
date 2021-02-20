@@ -45,6 +45,7 @@ type
     required_action:FZFileItemAction;
     real:FZCheckParams;
     target:FZCheckParams; // учитывается только при FZ_FILE_ACTION_DOWNLOAD
+    description:string;
   end;
   pFZFileItemData = ^FZFileItemData;
 
@@ -60,14 +61,14 @@ type
     _mode:FZDlMode;
 
     function _ScanDir(dir_path:string):boolean;                                                                 //сканирует поддиректорию
-    function _CreateFileData(name: string; url: string; compression:cardinal; need_checks:FZCheckParams): pFZFileItemData; //создает новую запись о файле и добавляет в список
+    function _CreateFileData(name: string; url: string; compression:cardinal; need_checks:FZCheckParams; description:string): pFZFileItemData; //создает новую запись о файле и добавляет в список
   public
     constructor Create();
     destructor Destroy(); override;
     procedure Clear();                                                                                          //полная очистка данных списка
     procedure Dump(severity:FZLogMessageSeverity=FZ_LOG_INFO);                                                  //вывод текущего состояния списка, отладочная опция
     function ScanPath(dir_path:string):boolean;                                                                 //построение списка файлов в указанной директории и ее поддиректориях для последующей актуализации
-    function UpdateFileInfo(filename: string; url: string; compression_type:cardinal; targetParams:FZCheckParams):boolean;      //обновить сведения о целевых параметрах файла
+    function UpdateFileInfo(filename: string; url: string; description:string; compression_type:cardinal; targetParams:FZCheckParams):boolean;      //обновить сведения о целевых параметрах файла
     function ActualizeFiles():boolean;                                                                          //актуализировать игровые данные
     procedure SortBySize();                                                                                     //отсортировать (по размеру) для оптимизации скорости скачивания
     function AddIgnoredFile(filename:string):boolean;                                                           //добавить игнорируемый файл; вызывать после того, как все UpdateFileInfo выполнены
@@ -223,7 +224,7 @@ begin
     if (data.dwFileAttributes and FILE_ATTRIBUTE_DIRECTORY <> 0) then begin
       _ScanDir(dir_path+name+'\');
     end else begin
-      _CreateFileData(dir_path+name, '', 0, GetDummyChecks());
+      _CreateFileData(dir_path+name, '', 0, GetDummyChecks(), '');
       FZLogMgr.Get.Write(FM_LBL+dir_path+name, FZ_LOG_DBG);
     end;
   until not FindNextFile(hndl, @data);
@@ -231,7 +232,7 @@ begin
   FindClose(hndl);
 end;
 
-function FZFiles._CreateFileData(name: string; url: string; compression:cardinal; need_checks:FZCheckParams): pFZFileItemData;
+function FZFiles._CreateFileData(name: string; url: string; compression:cardinal; need_checks:FZCheckParams; description:string): pFZFileItemData;
 begin
   New(result);
   result.name:=trim(name);
@@ -240,6 +241,7 @@ begin
   result.required_action:=FZ_FILE_ACTION_UNDEFINED;
   result.target:=need_checks;
   result.real:=GetDummyChecks();
+  result.description:=trim(description);
   _files.Add(result);
 end;
 
@@ -307,7 +309,7 @@ begin
   FZLogMgr.Get.Write(FM_LBL+'=======Scanning finished=======', FZ_LOG_DBG);
 end;
 
-function FZFiles.UpdateFileInfo(filename: string; url: string; compression_type:cardinal; targetParams:FZCheckParams):boolean;
+function FZFiles.UpdateFileInfo(filename: string; url: string; description:string; compression_type:cardinal; targetParams:FZCheckParams):boolean;
 var
   i:integer;
   filedata:pFZFileItemData;
@@ -337,7 +339,7 @@ begin
 
   if (filedata=nil) then begin
     //Файла нет в списке. Однозначно надо качать.
-    filedata:=_CreateFileData(filename, url, compression_type, targetParams);
+    filedata:=_CreateFileData(filename, url, compression_type, targetParams, description);
     filedata.required_action:=FZ_FILE_ACTION_DOWNLOAD;
     FZLogMgr.Get.Write(FM_LBL+'Created new file list entry', FZ_LOG_INFO );
   end else begin
@@ -350,6 +352,10 @@ begin
         filedata.real.md5:='';
       end;
       FZLogMgr.Get.Write(FM_LBL+'Current file info: CRC32='+inttohex(filedata.real.crc32, 8)+', size='+inttostr(filedata.real.size)+', md5=['+filedata.real.md5+']', FZ_LOG_INFO );
+    end;
+
+    if length(description)>0 then begin
+      filedata.description:=description;
     end;
 
     if  CompareFiles(filedata.real, targetParams) then begin
