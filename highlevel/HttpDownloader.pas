@@ -363,6 +363,7 @@ begin
       curl_easy_setopt(purl, CURLOPT_USERAGENT, FZCommonHelper.PtrToUint(useragent));
       curl_easy_setopt(purl, CURLOPT_XFERINFODATA, FZCommonHelper.PtrToUint(dl));
       curl_easy_setopt(purl, CURLOPT_XFERINFOFUNCTION, FZCommonHelper.PtrToUint(@CurlProgressCb));
+      curl_easy_setopt(purl, CURLOPT_FOLLOWLOCATION, 1);
       dl.SetRequestId(FZCommonHelper.PtrToUint(purl));
       curl_multi_add_handle(_multi_handle, purl);
       FZLogMgr.Get.Write(TH_LBL+'Download started for dl '+inttostr(FZCommonHelper.PtrToUint(dl))+', handle '+inttostr(FZCommonHelper.PtrToUint(purl)), FZ_LOG_INFO);

@@ -554,10 +554,20 @@ end;
 function ParseFileList(list_name:string; filelist:FZFiles; ignore_maintenance:boolean; var items_to_install:string; options:DownloadOptionsList):MasterListParseResult;
 var
   cfg:FZIniFile;
-  section, filename, fileurl, condstr:string;
+  section, filename, fileurl, condstr, params_url:string;
   meet_condition:boolean;
   files_count, i, compression:integer;
   fileCheckParams:FZCheckParams;
+
+  dlThread:FZDownloaderThread;
+  dl:FZFileDownloader;
+  dlres:boolean;
+  additional_inifile:FZIniFile;
+  additional_list_name:string;
+  force_ignore_file:boolean;
+
+  section_actual:string;
+  cfg_actual:FZIniFile;
 begin
   result:=MASTERLIST_PARSE_ERROR;
   items_to_install:='';
@@ -615,30 +625,87 @@ begin
           exit;
         end;
 
-        compression:=cfg.GetIntDef(section, 'compression', 0);
+        // We use file params from master-config by default
+        section_actual:=section;
+        cfg_actual:=cfg;
+        force_ignore_file:=false;
+
+        // However, if the params are stored in a different file, we should download and use info
+        params_url:=cfg.GetStringDef(section, 'params_url', '');
+        additional_inifile:=nil;
+        dlres:=false;
+        if length(params_url)>0 then begin
+          additional_list_name:=UTF8ToWinCP(list_name)+'.add';
+          FZLogMgr.Get.Write('Downloading params for file #'+inttostr(i)+' from '+params_url+ ' to '+additional_list_name, FZ_LOG_ERROR);
+
+          dlThread:=FZCurlDownloaderThread.Create();
+          dl:=dlThread.CreateDownloader(params_url, additional_list_name, 0);
+          try
+            dlres:=dl.StartSyncDownload();
+          finally
+            dl.Free;
+            dlThread.Free;
+          end;
+
+          if not dlres then begin
+            // Загрузка провалилась, игнорируем файл
+            FZLogMgr.Get.Write('Downloading params failed, set force ignore', FZ_LOG_ERROR);
+            force_ignore_file:=true;
+          end else begin
+            additional_inifile:=FZIniFile.Create(additional_list_name);
+            cfg_actual:=additional_inifile;
+            section_actual:='main';
+          end;
+        end;
+
+        compression:=cfg_actual.GetIntDef(section_actual, 'compression', 0);
 
         fileCheckParams.crc32:=0;
-        if not cfg.GetHex(section, 'crc32', fileCheckParams.crc32) then begin
+        if not force_ignore_file and not cfg_actual.GetHex(section_actual, 'crc32', fileCheckParams.crc32) then begin
           FZLogMgr.Get.Write('Invalid crc32 for file #'+inttostr(i), FZ_LOG_ERROR);
-          result:=MASTERLIST_PARSE_ERROR;
-          exit;
+
+          if additional_inifile = nil then begin
+            result:=MASTERLIST_PARSE_ERROR;
+            exit;
+          end else begin
+            force_ignore_file:=true;
+          end;
         end;
 
-        fileCheckParams.size:=cfg.GetIntDef(section, 'size', 0);
-        if fileCheckParams.size=0 then begin
+        fileCheckParams.size:=cfg_actual.GetIntDef(section_actual, 'size', 0);
+        if not force_ignore_file and (fileCheckParams.size=0) then begin
           FZLogMgr.Get.Write('Invalid size for file #'+inttostr(i), FZ_LOG_ERROR);
-          result:=MASTERLIST_PARSE_ERROR;
-          exit;
-        end;
-        fileCheckParams.md5:=LowerCase(cfg.GetStringDef(section, 'md5', ''));
 
-        if not fileList.UpdateFileInfo(filename, fileurl, compression, fileCheckParams) then begin
+          if additional_inifile = nil then begin
+            result:=MASTERLIST_PARSE_ERROR;
+            exit;
+          end else begin
+            force_ignore_file:=true;
+          end;
+        end;
+        fileCheckParams.md5:=LowerCase(cfg_actual.GetStringDef(section_actual, 'md5', ''));
+
+
+        if force_ignore_file then begin
+          FZLogMgr.Get.Write('Adding force-ignored file #'+inttostr(i)+' ('+filename+') to list', FZ_LOG_INFO);
+          if not fileList.AddIgnoredFile(filename) then begin
+            FZLogMgr.Get.Write('Cannot add to ignored file #'+inttostr(i)+' ('+filename+')', FZ_LOG_ERROR);
+            result:=MASTERLIST_PARSE_ERROR;
+            exit;
+          end;
+        end else if not fileList.UpdateFileInfo(filename, fileurl, compression, fileCheckParams) then begin
           FZLogMgr.Get.Write('Cannot update file info #'+inttostr(i)+' ('+filename+')', FZ_LOG_ERROR);
           result:=MASTERLIST_PARSE_ERROR;
           exit;
         end;
 
         items_to_install:=items_to_install+filename+chr($0d)+chr($0a);
+
+        if additional_inifile<>nil then begin
+          FreeAndNil(additional_inifile);
+          DeleteFile(PAnsiChar(additional_list_name));
+        end;
+
       end;
 
       result:=MASTERLIST_PARSE_OK;
@@ -1576,7 +1643,8 @@ const
   update_suffix:string = '.upd.exe';
   border_size:integer = 10;
   between_label_and_progress:integer=2;
-  MAIN_MASTER_LINK:string = 'https://raw.githubusercontent.com/gunslingermod/updater_links/master/guns.list';
+  MAIN_MASTER_LINK_PRI:string = 'https://raw.githubusercontent.com/gunslingermod/updater_links/master/guns.list';
+  MAIN_MASTER_LINK_SEC:string = 'https://github.com/gunslingermod/updater_links/raw/master/guns.list';
 begin
   self.Caption:=self.Caption+' (Build ' + {$INCLUDE %DATE} + ')';
   FZLogMgr.Get.Write(self.Caption, FZ_LOG_IMPORTANT_INFO);
@@ -1629,15 +1697,18 @@ begin
 
   if ParamCount = 0 then begin
     // TODO: Randomize array
-    PushToArray(_master_links, MAIN_MASTER_LINK);
+    PushToArray(_master_links, MAIN_MASTER_LINK_PRI);
+    PushToArray(_master_links, MAIN_MASTER_LINK_SEC);
   end else if ParamStr(1) = 'silent' then begin
     _silent_mode:=true;
     FZLogMgr.Get.Write('Using SILENT mode', FZ_LOG_IMPORTANT_INFO);
-    PushToArray(_master_links, MAIN_MASTER_LINK);
+    PushToArray(_master_links, MAIN_MASTER_LINK_PRI);
+    PushToArray(_master_links, MAIN_MASTER_LINK_SEC);
   end else if ParamStr(1) = 'fast' then begin
     _fast_mode:=true;
     FZLogMgr.Get.Write('Using FAST mode', FZ_LOG_IMPORTANT_INFO);
-    PushToArray(_master_links, MAIN_MASTER_LINK);
+    PushToArray(_master_links, MAIN_MASTER_LINK_PRI);
+    PushToArray(_master_links, MAIN_MASTER_LINK_SEC);
   end else begin
     FZLogMgr.Get.Write('Set master link to "'+ParamStr(1)+'"', FZ_LOG_INFO);
     PushToArray(_master_links, ParamStr(1));
