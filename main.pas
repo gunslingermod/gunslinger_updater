@@ -1486,6 +1486,8 @@ begin
             update_notes.Free;
           end;
           FZLogMgr.Get.Write('Need update: '+booltostr(need_update, true), FZ_LOG_IMPORTANT_INFO);
+          DeleteCriticalSection(_dl_info.lock);
+          FreeAndNil(_filelist);
           ChangeState(DL_STATE_TERMINAL);
         end else begin
           MarkInstallationAsValid(false);
@@ -1536,7 +1538,7 @@ begin
       LeaveCriticalSection(_dl_info.lock);
 
       if (progress.status = FZ_ACTUALIZING_FINISHED) or (progress.status = FZ_ACTUALIZING_FAILED ) then begin
-        TerminateThread(_th_handle, 0);
+        WaitForSingleObject(_th_handle, INFINITE);
         DeleteCriticalSection(_dl_info.lock);
         FreeAndNil(_filelist);
 
